@@ -1,39 +1,147 @@
 version: "1.0"
 region: "Waterloo Region"
 
-metrics:
-  - metric_id: housing_starts_total
-    domain: housing
-    label: "Housing starts (Waterloo Region)"
-    unit: "units"
-    source_url: "https://www150.statcan.gc.ca/n1/daily-quotidien/250117/dq250117c-eng.htm"
+sources:
 
-  - metric_id: average_home_price
-    domain: housing
-    label: "Average home price (Waterloo Region)"
-    unit: "CAD"
-    source_url: "https://trreb.ca/index.php/market-stats"
+  # ── HOUSING ──────────────────────────────────────────────────────────────
+  housing:
+    - source_id: ontario_housing_supply_1
+      label: "Ontario Housing Supply Progress (CSV 1)"
+      url: "https://data.ontario.ca/dataset/ontario-s-housing-supply-progress/resource/c922b5b4-9850-40c8-b905-afc3aaa347c0"
+      type: api
+      metrics: [building_homes_needed, affordable_housing_units]
+      frequency: monthly
 
-  - metric_id: transit_ridership
-    domain: transportation
-    label: "Transit ridership (Grand River Transit)"
-    unit: "trips/month"
-    source_url: "https://www.regionofwaterloo.ca/en/living-here/transportation-master-plan.aspx"
+    - source_id: ontario_housing_supply_2
+      label: "Ontario Housing Supply Progress (CSV 2)"
+      url: "https://data.ontario.ca/dataset/ontario-s-housing-supply-progress/resource/3bb04ba5-2445-44e0-9d2c-8a25dd1b18e6"
+      type: api
+      metrics: [building_homes_needed]
+      frequency: monthly
 
-  - metric_id: unemployment_rate
-    domain: employment
-    label: "Unemployment rate (Waterloo Region)"
-    unit: "%"
-    source_url: "https://www.workforceplanningboard.org/labour-market-information/"
+    - source_id: cmhc_rental_market
+      label: "CMHC Rental Market Reports"
+      url: "https://www.cmhc-schl.gc.ca/professionals/housing-markets-data-and-research/market-reports/rental-market-reports-major-centres"
+      type: pdf
+      metrics: [balanced_rental_market]
+      frequency: annual
 
-  - metric_id: er_wait_times
-    domain: healthcare
-    label: "ER wait time (hours)"
-    unit: "hours"
-    source_url: "https://www.ontariohealth.ca/wait-times"
+    - source_id: waterloo_housing_master_plan
+      label: "Waterloo Region Housing Master Plan"
+      url: "https://www.regionofwaterloo.ca/en/living-here/resources/Documents/Housing/WaterlooRegion-Housing-Master-Plan.pdf"
+      type: pdf
+      metrics: [building_homes_needed, affordable_housing_units]
+      frequency: annual
 
-  - metric_id: park_access
-    domain: placemaking
-    label: "Park access score (Waterloo Region)"
-    unit: "% residents within 500m"
-    source_url: "https://www.regionofwaterloo.ca/en/living-here/parks-and-trails.aspx"
+    - source_id: pit_homelessness_count
+      label: "Point-in-Time Homelessness Count"
+      url: "https://www.regionofwaterloo.ca/en/living-here/resources/Housing-Services/137392-CS---PIT-Count-Infographic_Accessibility.pdf"
+      type: pdf
+      metrics: [homelessness_funding]
+      frequency: annual
+
+    - source_id: water_wastewater_report
+      label: "Water and Wastewater Monitoring Report 2025"
+      url: "https://www.regionofwaterloo.ca/en/living-here/resources/Documents/water/reports/2025-Water-and-Wastewater-MonitoringReport-FINAL-s_ACCESS.pdf"
+      type: pdf
+      metrics: [water_wastewater_capacity]
+      frequency: annual
+
+  # ── TRANSPORTATION ────────────────────────────────────────────────────────
+  transportation:
+    - source_id: grt_performance
+      label: "Grand River Transit Performance Measures"
+      url: "https://www.grt.ca/en/about-grt/performance-measures.aspx"
+      type: web_scrape
+      metrics: [transit_ridership_target]
+      frequency: monthly
+
+    - source_id: ontario_housing_tracker
+      label: "Ontario Housing Supply Tracker (transit/infrastructure context)"
+      url: "https://www.ontario.ca/page/tracking-housing-supply-progress"
+      type: web_scrape
+      metrics: [rail_transit_investment, highway_7]
+      frequency: monthly
+
+  # ── HEALTHCARE ────────────────────────────────────────────────────────────
+  healthcare:
+    - source_id: ontario_ltc_waitlist
+      label: "Ontario LTC Waitlist Mapping Tool"
+      url: "https://www.ontario.ca/locations/longtermcare/search/?n=Waterloo%2C+ON"
+      type: web_scrape
+      metrics: [ltc_access]
+      frequency: monthly
+
+    - source_id: statcan_labour_health
+      label: "StatCan Labour Force Characteristics"
+      url: "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1410038001"
+      type: api
+      metrics: [residents_with_doctor]
+      frequency: monthly
+
+  # ── EMPLOYMENT ────────────────────────────────────────────────────────────
+  employment:
+    - source_id: statcan_labour_force
+      label: "StatCan Labour Force Survey (Table 14-10-0380-01)"
+      url: "https://www150.statcan.gc.ca/t1/tbl1/en/dtbl/downloads/1410038001.zip"
+      type: api
+      metrics: [regional_employment, jobs_secured]
+      frequency: monthly
+
+    - source_id: waterloo_economic_strategy
+      label: "Waterloo Region Economic Development Strategy 2025"
+      url: "https://hdp-ca-prod-app-wr-engage-files.s3.ca-central1.amazonaws.com/4017/3751/8391/1328e23c98ca065da65cbd5d3b6f0941_2025_Waterloo_Region_Economic_Development_Strategy.pdf"
+      type: pdf
+      metrics: [tech_talent, employment_lands, megasite]
+      frequency: annual
+
+    - source_id: ieso_planning
+      label: "IESO Annual Planning Outlook"
+      url: "https://www.ieso.ca/Sector-Participants/Planning-and-Forecasting/Annual-Planning-Outlook"
+      type: web_scrape
+      metrics: [electrical_capacity]
+      frequency: annual
+
+  # ── PLACEMAKING ───────────────────────────────────────────────────────────
+  placemaking:
+    - source_id: climate_dashboard
+      label: "Climate Action Waterloo Region Dashboard"
+      url: "https://dashboard.climateactionwr.ca/"
+      type: web_scrape
+      metrics: [ghg_reduction]
+      frequency: monthly
+
+    - source_id: climate_action_ghg_1
+      label: "Climate Action GHG Indicator 3.1.7"
+      url: "https://dashboard.climateactionwr.ca/actions/3.1.7"
+      type: web_scrape
+      metrics: [ghg_reduction]
+      frequency: monthly
+
+    - source_id: statcan_crime
+      label: "StatCan Police-Reported Crime Statistics"
+      url: "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3510019101"
+      type: api
+      metrics: [community_safety]
+      frequency: annual
+
+    - source_id: vital_signs
+      label: "WRCF Vital Signs Report 2025"
+      url: "https://static1.squarespace.com/static/629f5ec7c1e9382dc5ce72b9/t/68c43799e91b5f763a4980d1/1757689753222/WRCF+2025+Waterloo+Region+Vital+Signs+Report+-+FINAL.pdf"
+      type: pdf
+      metrics: [social_infrastructure, tourism_recreation, childcare_access]
+      frequency: annual
+
+    - source_id: wrdsb_accommodation
+      label: "WRDSB Long-Term Accommodation Plan"
+      url: "https://www.wrdsb.ca/planning/wp-content/uploads/sites/5/2020-2030-WRDSB-Long-Term-Accommodation-Plan-FINAL.pdf"
+      type: pdf
+      metrics: [school_spaces]
+      frequency: annual
+
+    - source_id: ghg_inventory
+      label: "Waterloo Region Community GHG Inventory 2022"
+      url: "https://climateactionwr.ca/wp-content/uploads/2024/05/2022-Waterloo-Region-Community-Greenhouse-Gas-Inventory-Report-Published-June-2024.pdf"
+      type: pdf
+      metrics: [ghg_reduction]
+      frequency: annual

@@ -15,6 +15,12 @@ from .engine import (
 from .models import FetchResult, SourceConfig
 from .pdf_fetcher import PDFFetcher
 from .scrape_fetcher import ScrapeFetcher
+from .source_registry import (
+    get_sources_by_type,
+    get_sources_for_metric,
+    load_sources,
+    print_registry_summary,
+)
 from .tavily_fallback import TavilyFallback
 
 __all__ = [
@@ -25,6 +31,10 @@ __all__ = [
     "ScrapeFetcher",
     "SourceConfig",
     "TavilyFallback",
+    "get_sources_by_type",
+    "get_sources_for_metric",
+    "load_sources",
+    "print_registry_summary",
     "create_fetcher",
     "iter_fetchers",
     "load_config",
