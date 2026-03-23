@@ -31,3 +31,9 @@ metrics:
     label: "ER wait time (hours)"
     unit: "hours"
     source_url: "https://www.ontariohealth.ca/wait-times"
+
+  - metric_id: park_access
+    domain: placemaking
+    label: "Park access score (Waterloo Region)"
+    unit: "% residents within 500m"
+    source_url: "https://www.regionofwaterloo.ca/en/living-here/parks-and-trails.aspx"

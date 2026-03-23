@@ -92,7 +92,7 @@ def render(domain: str) -> None:
         x="date",
         y="value",
         markers=True,
-        title=f"{metric_id} — Historical Trend",
+        title=f"{metric_id.replace('_', ' ').title()} — Historical Trend",
         template="plotly_dark",
     )
     fig.update_traces(

@@ -88,6 +88,16 @@ _SEED_SPECS: list[dict] = [
         "jitter": 0.2,
         "integer": False,
     },
+    {
+        "metric_id": "park_access",
+        "domain": "placemaking",
+        "label": "Park access score (Waterloo Region)",
+        "unit": "% residents within 500m",
+        "low": 68.0,
+        "high": 78.0,
+        "jitter": 0.5,
+        "integer": False,
+    },
 ]
 
 
@@ -273,7 +283,7 @@ def main() -> None:
             index=0,
             label_visibility="collapsed",
         )
-        st.markdown("<hr style='border-color:#30363D;margin:16px 0;'>", unsafe_allow_html=True)
+        st.markdown("<hr style='border:none;border-top:1px solid #00C853;margin:16px 0;opacity:0.45;'>", unsafe_allow_html=True)
         st.markdown(_sidebar_status(), unsafe_allow_html=True)
         st.markdown(
             f"<p style='font-size:0.72rem;color:#8B949E;margin-top:20px;'>Last updated<br/><span style='color:#E6EDF3;'>{_last_updated_text()}</span></p>",
