@@ -12,6 +12,8 @@ _DASH = Path(__file__).resolve().parent.parent
 if str(_DASH) not in sys.path:
     sys.path.insert(0, str(_DASH))
 
+from scorecard_data import METRICS_BY_DOMAIN, get_rating, pct_achieved  # noqa: E402
+
 ACCENT = "#00C853"
 WARN = "#FFB300"
 DANGER = "#FF5252"
@@ -72,7 +74,33 @@ def _format_value(value: float, unit: str) -> str:
     return f"{value:,.2f}"
 
 
-def _card_html(domain: str, df: pd.DataFrame) -> str:
+def _domain_avg_pct(domain: str, df: pd.DataFrame) -> float:
+    """Average % of target achieved across all scorecard metrics for a domain."""
+    metrics_def = METRICS_BY_DOMAIN.get(domain, [])
+    if not metrics_def:
+        return 0.0
+    domain_df = df[df["domain"].str.lower() == domain] if not df.empty else pd.DataFrame()
+    pcts: list[float] = []
+    for m in metrics_def:
+        cur = m.current
+        if not domain_df.empty:
+            row = domain_df[domain_df["metric_id"] == m.metric_id]
+            if not row.empty:
+                v = pd.to_numeric(row.iloc[0]["value"], errors="coerce")
+                if pd.notna(v):
+                    cur = float(v)
+        pcts.append(pct_achieved(m.metric_id, cur))
+    return sum(pcts) / len(pcts) if pcts else 0.0
+
+
+def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+    """Convert a #RRGGBB string to rgba(...) with the given opacity."""
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return f"rgba({r},{g},{b},{alpha})"
+
+
+def _card_html(domain: str, df: pd.DataFrame, rating_label: str, rating_color: str) -> str:
     """Return the inner HTML for one domain card (no outer wrapper)."""
     rows = df[df["domain"].str.lower() == domain]
     icon = DOMAIN_ICON.get(domain, "📊")
@@ -91,18 +119,12 @@ def _card_html(domain: str, df: pd.DataFrame) -> str:
 
     value = pd.to_numeric(headline_row.get("value"), errors="coerce")
     unit = str(headline_row.get("unit") or "")
-    status = str(headline_row.get("source_status") or "")
     ts_raw = str(headline_row.get("timestamp") or "")
     freshness = ts_raw[:10] if ts_raw else "—"
     formatted = _format_value(float(value), unit) if pd.notna(value) else "—"
     unit_label = DOMAIN_UNIT_LABEL.get(domain, unit)
 
-    if status == "success":
-        badge_color, badge_bg = "#2E7D32", "#0a2a0a"
-    elif status == "fallback":
-        badge_color, badge_bg = "#1565C0", "#0a1a2e"
-    else:
-        badge_color, badge_bg = "#C62828", "#2d0a0a"
+    badge_bg = _hex_to_rgba(rating_color, 0.15)
 
     return f"""
 <p style='color:#8B949E;font-size:11px;font-weight:700;text-transform:uppercase;
@@ -114,27 +136,33 @@ line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{for
 overflow:hidden;text-overflow:ellipsis;'>{unit_label}</p>
 <div style='margin-top:auto;'>
   <span style='display:inline-block;padding:2px 7px;border-radius:8px;
-  background:{badge_bg};color:{badge_color};border:1px solid {badge_color}55;
+  background:{badge_bg};color:{rating_color};border:1px solid {rating_color}55;
   font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;
-  white-space:nowrap;'>{status or 'unknown'}</span>
+  white-space:nowrap;'>{rating_label}</span>
   <p style='color:#484F58;font-size:10px;margin:4px 0 0;'>Updated: {freshness}</p>
 </div>"""
 
 
 def _domain_cards_row(df: pd.DataFrame) -> str:
     """Render all 5 domain cards as a single flex-row HTML block."""
-    card_style = (
-        "flex:1;min-width:0;background:#1E2329;border:1px solid #30363D;"
-        "border-radius:12px;padding:16px 14px;height:160px;box-sizing:border-box;"
-        "display:flex;flex-direction:column;overflow:hidden;"
-    )
-    cards = "".join(
-        f"<div style='{card_style}'>{_card_html(domain, df)}</div>"
-        for domain in DOMAIN_ORDER
-    )
+    cards_html = ""
+    for domain in DOMAIN_ORDER:
+        avg_pct = _domain_avg_pct(domain, df)
+        rating_label, rating_color, _ = get_rating(avg_pct)
+        tint_bg = _hex_to_rgba(rating_color, 0.05)
+        card_style = (
+            f"flex:1;min-width:0;"
+            f"background:{tint_bg};"
+            f"border:1px solid #30363D;"
+            f"border-left:4px solid {rating_color};"
+            f"border-radius:12px;padding:16px 14px;height:160px;"
+            f"box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden;"
+        )
+        inner = _card_html(domain, df, rating_label, rating_color)
+        cards_html += f"<div style='{card_style}'>{inner}</div>"
     return (
         f"<div style='display:flex;gap:12px;width:100%;margin-bottom:28px;'>"
-        f"{cards}"
+        f"{cards_html}"
         f"</div>"
     )
 
