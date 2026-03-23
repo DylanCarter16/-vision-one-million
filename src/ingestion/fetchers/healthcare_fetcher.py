@@ -178,6 +178,19 @@ class HealthcareFetcher:
 
         return None, "tavily"
 
+    def fetch_mental_health(self) -> tuple[float | None, str]:
+        """
+        Use Tavily to find mental health and addiction service capacity in Waterloo Region.
+        Returns an estimated % of need being met (0-100).
+        """
+        val = _tavily_search(
+            "Waterloo Region mental health addiction services funding capacity 2025 percent",
+            lo=0.0, hi=100.0,
+        )
+        if val is not None:
+            logger.info("Mental health support (Tavily): %.1f%%", val)
+        return val, "tavily"
+
     def run_and_store(self) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
         results: dict[str, Any] = {}
@@ -214,5 +227,13 @@ class HealthcareFetcher:
             _store("residents_with_doctor", self.DOMAIN, "Residents Connected to a Doctor",
                    doc_val, "percent", status, now)
         results["residents_with_doctor"] = {"value": doc_val, "status": status, "source": doc_src}
+
+        mh_val, mh_src = self.fetch_mental_health()
+        status = "fallback" if mh_val else "failed"
+        print(f"  mental_health_support: {mh_val} ({status} via {mh_src})")
+        if mh_val is not None:
+            _store("mental_health_support", self.DOMAIN, "Mental Health & Addiction Support",
+                   mh_val, "percent", status, now)
+        results["mental_health_support"] = {"value": mh_val, "status": status, "source": mh_src}
 
         return results

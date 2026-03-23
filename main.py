@@ -76,13 +76,22 @@ def run_pipeline() -> tuple[int, int]:
             logger.error("%s failed: %s", fetcher.__class__.__name__, exc)
 
     _print_summary(all_results)
+
+    real_count = sum(1 for i in all_results.values() if i.get("status") == "success")
+    fallback_count = sum(1 for i in all_results.values() if i.get("status") == "fallback")
+    failed_count = sum(1 for i in all_results.values() if i.get("status") == "failed")
+
+    print(f"\nPipeline complete: {real_count + fallback_count}/{total} metrics updated")
+    print(f"  Real source:      {real_count}")
+    print(f"  Tavily fallback:  {fallback_count}")
+    print(f"  Failed:           {failed_count}")
+
     return successes, total
 
 
 def main() -> None:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
-    successes, total = run_pipeline()
-    print(f"\nPipeline complete: {successes}/{total} metrics fetched via primary source.")
+    run_pipeline()
 
 
 if __name__ == "__main__":

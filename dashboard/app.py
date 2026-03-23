@@ -159,9 +159,9 @@ tbody tr:hover {{ background-color: #21262D; }}
     letter-spacing: 0.04em;
     text-transform: uppercase;
 }}
-.badge-success  {{ background: #0a2a0a; color: #2E7D32; border: 1px solid #2E7D3266; }}
-.badge-fallback {{ background: #0a1a2e; color: #1565C0; border: 1px solid #1565C066; }}
-.badge-failed   {{ background: #2d0a0a; color: #C62828; border: 1px solid #C6282866; }}
+.badge-success  {{ background: #1B5E20; color: #fff; border: 1px solid #2E7D3266; }}
+.badge-fallback {{ background: #1565C0; color: #fff; border: 1px solid #1976D266; }}
+.badge-failed   {{ background: #B71C1C; color: #fff; border: 1px solid #C6282866; }}
 
 /* ── section headers ── */
 h2, h3 {{ color: #E6EDF3 !important; font-weight: 700; }}
@@ -189,14 +189,14 @@ def _inject_theme() -> None:
 def _status_badge(status: str) -> str:
     s = (status or "").lower()
     if s == "success":
-        color, bg = "#2E7D32", "#0a2a0a"
+        color, bg = "#fff", "#1B5E20"
     elif s == "fallback":
-        color, bg = "#1565C0", "#0a1a2e"
+        color, bg = "#fff", "#1565C0"
     else:
-        color, bg = "#C62828", "#2d0a0a"
+        color, bg = "#fff", "#B71C1C"
     return (
         f"<span style='display:inline-block;padding:2px 10px;border-radius:12px;"
-        f"background:{bg};color:{color};border:1px solid {color}66;"
+        f"background:{bg};color:{color};border:1px solid {bg}66;"
         f"font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;'>"
         f"{s or 'unknown'}</span>"
     )

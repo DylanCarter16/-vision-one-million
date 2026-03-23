@@ -70,6 +70,19 @@ def render() -> None:
                 st.session_state["last_refresh"] = now
                 result_text = f"Pipeline complete: {successes}/{total} metrics updated"
                 st.success(f"{result_text} — refreshed at {now}")
+            except ImportError:
+                # Fall back to subprocess when direct import is unavailable
+                import subprocess
+                proc = subprocess.run(
+                    [sys.executable, str(ROOT / "main.py")],
+                    capture_output=True, text=True, cwd=str(ROOT),
+                )
+                now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+                st.session_state["last_refresh"] = now
+                if proc.returncode == 0:
+                    st.success(f"Pipeline complete — refreshed at {now}")
+                else:
+                    st.error(f"Pipeline error (subprocess):\n{proc.stderr[-800:]}")
             except Exception as exc:
                 st.error(f"Pipeline error: {exc}")
 

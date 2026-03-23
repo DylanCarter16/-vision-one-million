@@ -194,6 +194,67 @@ class PlacemakingFetcher:
 
         return None, "tavily"
 
+    def fetch_school_spaces(self) -> tuple[float | None, str]:
+        """
+        Try to download the WRDSB Long-Term Accommodation Plan PDF and extract
+        a utilisation percentage using PyPDF2. Falls back to Tavily.
+        """
+        _WRDSB_URL = (
+            "https://www.wrdsb.ca/planning/wp-content/uploads/sites/5/"
+            "2020-2030-WRDSB-Long-Term-Accommodation-Plan-FINAL.pdf"
+        )
+        try:
+            import io
+            import PyPDF2
+
+            resp = requests.get(_WRDSB_URL, headers=_HEADERS, timeout=30)
+            resp.raise_for_status()
+            reader = PyPDF2.PdfReader(io.BytesIO(resp.content))
+            text = " ".join(
+                page.extract_text() or "" for page in reader.pages[:10]
+            )
+            # Look for utilisation/capacity percentages
+            for pattern in (
+                r"(\d+(?:\.\d+)?)\s*%\s*(?:utiliz|capacity|occupied)",
+                r"(?:utiliz|capacity|occupied)[^\d]{0,60}(\d+(?:\.\d+)?)\s*%",
+            ):
+                m = re.search(pattern, text, re.IGNORECASE)
+                if m:
+                    val = float(m.group(1))
+                    if 0.0 < val <= 150.0:
+                        logger.info("WRDSB school utilisation from PDF: %.1f%%", val)
+                        return val, "wrdsb_pdf"
+            logger.warning("WRDSB PDF downloaded but no utilisation % found")
+        except Exception as exc:
+            logger.warning("WRDSB PDF fetch failed: %s", exc)
+
+        logger.info("Falling back to Tavily for school spaces")
+        val = _tavily_search(
+            "WRDSB school capacity utilization 2025 Waterloo Region percent",
+            lo=0.0, hi=150.0,
+        )
+        return val, "tavily"
+
+    def fetch_tourism(self) -> tuple[float | None, str]:
+        """Tavily search for tourism/recreation activity in Waterloo Region."""
+        val = _tavily_search(
+            "Waterloo Region tourism visitors revenue 2024 2025 percent growth",
+            lo=0.0, hi=100.0,
+        )
+        if val is not None:
+            logger.info("Tourism/recreation (Tavily): %.1f%%", val)
+        return val, "tavily"
+
+    def fetch_social_infrastructure(self) -> tuple[float | None, str]:
+        """Tavily search for social infrastructure investment progress."""
+        val = _tavily_search(
+            "Waterloo Region community centers social infrastructure investment 2025 percent",
+            lo=0.0, hi=100.0,
+        )
+        if val is not None:
+            logger.info("Social infrastructure (Tavily): %.1f%%", val)
+        return val, "tavily"
+
     def run_and_store(self) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
         results: dict[str, Any] = {}
@@ -221,5 +282,29 @@ class PlacemakingFetcher:
             _store("community_safety", self.DOMAIN, "Creating a Safer Community",
                    cs_val, "percent", status, now)
         results["community_safety"] = {"value": cs_val, "status": status, "source": cs_src}
+
+        ss_val, ss_src = self.fetch_school_spaces()
+        status = "success" if ss_src == "wrdsb_pdf" else ("fallback" if ss_val else "failed")
+        print(f"  school_spaces: {ss_val} ({status} via {ss_src})")
+        if ss_val is not None:
+            _store("school_spaces", self.DOMAIN, "Increase Spaces in Schools",
+                   ss_val, "percent", status, now)
+        results["school_spaces"] = {"value": ss_val, "status": status, "source": ss_src}
+
+        tr_val, tr_src = self.fetch_tourism()
+        status = "fallback" if tr_val else "failed"
+        print(f"  tourism_recreation: {tr_val} ({status} via {tr_src})")
+        if tr_val is not None:
+            _store("tourism_recreation", self.DOMAIN, "Tourism & Recreation Facilities",
+                   tr_val, "percent", status, now)
+        results["tourism_recreation"] = {"value": tr_val, "status": status, "source": tr_src}
+
+        si_val, si_src = self.fetch_social_infrastructure()
+        status = "fallback" if si_val else "failed"
+        print(f"  social_infrastructure: {si_val} ({status} via {si_src})")
+        if si_val is not None:
+            _store("social_infrastructure", self.DOMAIN, "Increasing Social Infrastructure",
+                   si_val, "percent", status, now)
+        results["social_infrastructure"] = {"value": si_val, "status": status, "source": si_src}
 
         return results
