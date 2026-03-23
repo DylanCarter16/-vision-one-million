@@ -5,7 +5,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from dashboard.db import get_system_health
+from db import get_system_health
 
 
 def _status_color(status: str) -> str:

@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from dashboard.db import get_domain_summary, get_metric_history
+from db import get_domain_summary, get_metric_history
 
 ACCENT = "#00C853"
 

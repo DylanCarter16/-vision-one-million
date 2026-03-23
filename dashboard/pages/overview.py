@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from dashboard.db import get_all_metrics
+from db import get_all_metrics
 
 DOMAIN_ORDER = ["housing", "transportation", "healthcare", "employment", "placemaking"]
 TARGETS = {d: 1_000_000 for d in DOMAIN_ORDER}
