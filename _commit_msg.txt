@@ -1,9 +1,0 @@
-complete: all fetchers, README, polish
-
-- healthcare_fetcher: add fetch_mental_health() with Tavily fallback
-- placemaking_fetcher: add fetch_school_spaces (WRDSB PDF + Tavily), fetch_tourism, fetch_social_infrastructure
-- main.py: print real/fallback/failed counts in pipeline summary
-- README.md: full overview, architecture, rating system, tech stack, automation docs
-- .env.example: safe-to-commit key template
-- dashboard/app.py: badge backgrounds updated to solid green/blue/red
-- system_health.py: subprocess fallback for pipeline refresh button
