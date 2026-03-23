@@ -186,6 +186,9 @@ def _inject_theme() -> None:
 # ---------------------------------------------------------------------------
 # Sidebar helpers
 # ---------------------------------------------------------------------------
+_BADGE_LABEL = {"success": "LIVE", "fallback": "SOURCED", "failed": "MISSING"}
+
+
 def _status_badge(status: str) -> str:
     s = (status or "").lower()
     if s == "success":
@@ -194,11 +197,12 @@ def _status_badge(status: str) -> str:
         color, bg = "#fff", "#1565C0"
     else:
         color, bg = "#fff", "#B71C1C"
+    label = _BADGE_LABEL.get(s, s.upper() or "UNKNOWN")
     return (
         f"<span style='display:inline-block;padding:2px 10px;border-radius:12px;"
         f"background:{bg};color:{color};border:1px solid {bg}66;"
         f"font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;'>"
-        f"{s or 'unknown'}</span>"
+        f"{label}</span>"
     )
 
 

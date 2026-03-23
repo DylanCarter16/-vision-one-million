@@ -52,10 +52,62 @@ def _overall_badge(avg_pct: float) -> str:
 
 
 _SOURCE_LABEL: dict[str, str] = {
-    "success":  "Live data",
-    "fallback": "Tavily Search",
-    "failed":   "Seed data",
+    "success":  "✅ Live source — direct fetch",
+    "fallback": "🔍 Tavily web search — primary source unavailable",
+    "failed":   "❌ Data unavailable",
 }
+
+
+def _unit_suffix(unit: str) -> str:
+    """Return a short human-readable unit label to append after a number."""
+    u = (unit or "").lower()
+    if u in ("units/yr", "units"):
+        return " units"
+    if "trips" in u:
+        return " trips"
+    if u == "jobs":
+        return " jobs"
+    if u == "km":
+        return " km"
+    if u in ("hours",):
+        return " hrs"
+    # percent-like units carry their own symbol via _fmt — no extra suffix
+    return ""
+
+
+def _value_line(current: float, target: float, unit: str, pct: float) -> str:
+    """
+    Build the value/target display line for a card.
+
+    For percentage metrics: "54% of goal  (54.2 / 100.0%)"
+    For all others:          "1,800,255 trips / 2,000,000 trips target"
+    """
+    u = (unit or "").lower()
+    is_pct = "%" in u or u in ("percent", "vacancy_pct", "percent_employed")
+    if is_pct:
+        curr_fmt = _fmt(current, unit)
+        tgt_fmt = _fmt(target, unit)
+        return (
+            f"<span style='color:#8B949E;font-size:0.72rem;'>"
+            f"<strong style='color:#C9D1D9;'>{pct:.0f}%</strong> of goal"
+            f"&nbsp;&nbsp;"
+            f"<span style='color:#484F58;'>({curr_fmt} / {tgt_fmt})</span>"
+            f"</span>"
+        )
+    suffix = _unit_suffix(unit)
+    if u == "cad":
+        curr_str = f"${current:,.0f}"
+        tgt_str = f"${target:,.0f}"
+        return (
+            f"<span style='color:#C9D1D9;font-size:0.72rem;font-weight:700;'>{curr_str}</span>"
+            f"<span style='color:#484F58;font-size:0.72rem;'> / {tgt_str} target</span>"
+        )
+    curr_str = f"{current:,.0f}{suffix}"
+    tgt_str = f"{target:,.0f}{suffix}"
+    return (
+        f"<span style='color:#C9D1D9;font-size:0.72rem;font-weight:700;'>{curr_str}</span>"
+        f"<span style='color:#484F58;font-size:0.72rem;'> / {tgt_str} target</span>"
+    )
 
 
 def _subcategory_card(
@@ -68,22 +120,19 @@ def _subcategory_card(
     source_status: str = "",
 ) -> str:
     rating_label, rating_color, rating_bg = get_rating(pct)
-    curr_fmt = _fmt(current, unit)
-    tgt_fmt = _fmt(target, unit)
-    src_text = _SOURCE_LABEL.get((source_status or "").lower(), "Seed data")
-    # No truncation — allow full label to wrap naturally
+    src_text = _SOURCE_LABEL.get((source_status or "").lower(), "❌ Data unavailable")
+    val_line = _value_line(current, target, unit, pct)
     return f"""
 <div style="border-radius:12px;overflow:hidden;box-shadow:0 2px 8px #00000044;display:flex;flex-direction:column;">
   <div style="background:{domain_color};padding:12px 14px;min-height:60px;display:flex;align-items:flex-start;">
     <span style="color:#fff;font-size:0.82rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;line-height:1.3;word-wrap:break-word;overflow-wrap:break-word;">{label}</span>
   </div>
   <div style="background:{rating_bg};padding:8px 14px;border-top:2px solid {rating_color};">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
       <span style="color:{rating_color};font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;">{rating_label}</span>
-      <span style="color:{rating_color};font-size:0.72rem;font-weight:700;">{pct:.0f}%</span>
     </div>
-    <span style="color:#8B949E;font-size:0.72rem;">{curr_fmt} <span style="color:#484F58;">/ {tgt_fmt}</span></span>
-    <div style="margin-top:4px;color:#484F58;font-size:0.65rem;">Source: {src_text}</div>
+    <div style="margin-bottom:4px;">{val_line}</div>
+    <div style="margin-top:2px;color:#484F58;font-size:0.63rem;">{src_text}</div>
   </div>
 </div>"""
 

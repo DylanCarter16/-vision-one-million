@@ -120,7 +120,15 @@ def render() -> None:
 
     # ── Per-metric table ───────────────────────────────────────────────────
     st.markdown(
-        "<h2 style='font-size:1.1rem;font-weight:700;color:#E6EDF3;margin-bottom:12px;'>Metric Source Status</h2>",
+        "<h2 style='font-size:1.1rem;font-weight:700;color:#E6EDF3;margin-bottom:8px;'>Metric Source Status</h2>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<p style='font-size:0.78rem;color:#8B949E;margin-bottom:14px;line-height:1.7;'>"
+        "✅&nbsp;<strong style='color:#C9D1D9;'>Live</strong> — fetched directly from source API &nbsp;·&nbsp; "
+        "🔍&nbsp;<strong style='color:#C9D1D9;'>Fallback</strong> — found via Tavily web search (still accurate, different route) &nbsp;·&nbsp; "
+        "❌&nbsp;<strong style='color:#C9D1D9;'>Failed</strong> — data unavailable, prior value retained"
+        "</p>",
         unsafe_allow_html=True,
     )
 
