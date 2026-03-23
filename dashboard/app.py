@@ -19,8 +19,8 @@ if str(_SRC) not in sys.path:
 
 from agent.database import init_db, insert_result  # noqa: E402
 
-from dashboard.db import get_all_metrics, get_domain_summary
-from dashboard.pages import domain_detail, overview, system_health
+from db import get_all_metrics, get_domain_summary
+from pages import domain_detail, overview, system_health
 
 
 # ---------------------------------------------------------------------------
