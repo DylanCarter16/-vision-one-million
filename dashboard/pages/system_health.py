@@ -125,23 +125,21 @@ def render() -> None:
     )
 
     display = health.copy()
-    display["Status"] = display["source_status"].apply(_badge)
+    display["Status"] = display["source_status"].astype(str).str.lower()
     display["Last Updated"] = display["last_updated"].astype(str).str[:16].str.replace("T", " ")
     display = display.rename(columns={"label": "Metric", "domain": "Domain", "metric_id": "Metric ID"})
     cols_show = ["Domain", "Metric", "Metric ID", "Last Updated", "Status"]
     cols_show = [c for c in cols_show if c in display.columns]
 
-    html = display[cols_show].to_html(escape=False, index=False, classes="health-table")
-    st.markdown(
-        f"""
-        <style>
-        .health-table {{width:100%;border-collapse:collapse;font-size:0.85rem;}}
-        .health-table th {{background:#161B22;color:#8B949E;text-align:left;padding:10px 12px;
-                          border-bottom:1px solid #30363D;text-transform:uppercase;font-size:0.72rem;letter-spacing:0.05em;}}
-        .health-table td {{padding:10px 12px;border-bottom:1px solid #21262D;color:#E6EDF3;}}
-        .health-table tr:hover td {{background:#21262D;}}
-        </style>
-        {html}
-        """,
-        unsafe_allow_html=True,
+    st.dataframe(
+        display[cols_show],
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Domain":      st.column_config.TextColumn("Domain"),
+            "Metric":      st.column_config.TextColumn("Metric"),
+            "Metric ID":   st.column_config.TextColumn("Metric ID"),
+            "Last Updated": st.column_config.TextColumn("Last Updated"),
+            "Status":      st.column_config.TextColumn("Status"),
+        },
     )
