@@ -48,12 +48,27 @@ def get_all_metrics() -> pd.DataFrame:
 
 @st.cache_data(show_spinner=False)
 def get_metric_history(metric_id: str) -> pd.DataFrame:
-    """Return all historical rows for one metric."""
+    """Return one averaged row per (year, month) for a metric, ordered chronologically.
+
+    Averaging across all rows for the same period removes noise from multiple
+    pipeline runs writing slightly different values in the same month.
+    """
     query = """
-    SELECT metric_id, domain, label, value, unit, year, month, source_status, flagged, timestamp
+    SELECT
+        metric_id,
+        domain,
+        label,
+        AVG(value)      AS value,
+        unit,
+        year,
+        month,
+        source_status,
+        flagged,
+        MAX(timestamp)  AS timestamp
     FROM metrics
     WHERE metric_id = ?
-    ORDER BY year ASC, COALESCE(month, 0) ASC, timestamp ASC
+    GROUP BY metric_id, domain, label, unit, year, COALESCE(month, 0), source_status, flagged
+    ORDER BY year ASC, COALESCE(month, 0) ASC
     """
     try:
         with _connect() as conn:

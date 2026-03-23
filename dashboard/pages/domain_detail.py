@@ -51,6 +51,13 @@ def _overall_badge(avg_pct: float) -> str:
     )
 
 
+_SOURCE_LABEL: dict[str, str] = {
+    "success":  "Live data",
+    "fallback": "Tavily Search",
+    "failed":   "Seed data",
+}
+
+
 def _subcategory_card(
     label: str,
     current: float,
@@ -58,15 +65,17 @@ def _subcategory_card(
     unit: str,
     domain_color: str,
     pct: float,
+    source_status: str = "",
 ) -> str:
     rating_label, rating_color, rating_bg = get_rating(pct)
     curr_fmt = _fmt(current, unit)
     tgt_fmt = _fmt(target, unit)
-    short_label = label if len(label) <= 38 else label[:36] + "…"
+    src_text = _SOURCE_LABEL.get((source_status or "").lower(), "Seed data")
+    # No truncation — allow full label to wrap naturally
     return f"""
-<div style="border-radius:12px;overflow:hidden;box-shadow:0 2px 8px #00000044;height:155px;display:flex;flex-direction:column;">
-  <div style="background:{domain_color};padding:12px 14px;flex:1;display:flex;align-items:center;">
-    <span style="color:#fff;font-size:0.82rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;line-height:1.25;">{short_label}</span>
+<div style="border-radius:12px;overflow:hidden;box-shadow:0 2px 8px #00000044;display:flex;flex-direction:column;">
+  <div style="background:{domain_color};padding:12px 14px;min-height:60px;display:flex;align-items:flex-start;">
+    <span style="color:#fff;font-size:0.82rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;line-height:1.3;word-wrap:break-word;overflow-wrap:break-word;">{label}</span>
   </div>
   <div style="background:{rating_bg};padding:8px 14px;border-top:2px solid {rating_color};">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
@@ -74,6 +83,7 @@ def _subcategory_card(
       <span style="color:{rating_color};font-size:0.72rem;font-weight:700;">{pct:.0f}%</span>
     </div>
     <span style="color:#8B949E;font-size:0.72rem;">{curr_fmt} <span style="color:#484F58;">/ {tgt_fmt}</span></span>
+    <div style="margin-top:4px;color:#484F58;font-size:0.65rem;">Source: {src_text}</div>
   </div>
 </div>"""
 
@@ -109,6 +119,13 @@ def render(domain: str) -> None:
                     return float(v)
         return fallback
 
+    def _source_status(metric_id: str) -> str:
+        if not domain_df.empty:
+            row = domain_df[domain_df["metric_id"] == metric_id]
+            if not row.empty:
+                return str(row.iloc[0].get("source_status") or "")
+        return "failed"
+
     # Calculate % achieved for each subcategory
     pcts: list[float] = []
     for m in metrics_def:
@@ -139,7 +156,10 @@ def render(domain: str) -> None:
             cur = _current(m.metric_id, m.current)
             p = pct_achieved(m.metric_id, cur)
             cols[i].markdown(
-                _subcategory_card(m.label, cur, m.target, m.unit, domain_color, p),
+                _subcategory_card(
+                    m.label, cur, m.target, m.unit, domain_color, p,
+                    source_status=_source_status(m.metric_id),
+                ),
                 unsafe_allow_html=True,
             )
         # Fill remaining empty slots in last row only if needed

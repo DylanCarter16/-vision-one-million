@@ -159,9 +159,9 @@ tbody tr:hover {{ background-color: #21262D; }}
     letter-spacing: 0.04em;
     text-transform: uppercase;
 }}
-.badge-success {{ background: #0d2818; color: {ACCENT}; border: 1px solid {ACCENT}44; }}
-.badge-fallback {{ background: #2d1e02; color: {WARN}; border: 1px solid {WARN}44; }}
-.badge-failed   {{ background: #2d0a0a; color: {DANGER}; border: 1px solid {DANGER}44; }}
+.badge-success  {{ background: #0a2a0a; color: #2E7D32; border: 1px solid #2E7D3266; }}
+.badge-fallback {{ background: #0a1a2e; color: #1565C0; border: 1px solid #1565C066; }}
+.badge-failed   {{ background: #2d0a0a; color: #C62828; border: 1px solid #C6282866; }}
 
 /* ── section headers ── */
 h2, h3 {{ color: #E6EDF3 !important; font-weight: 700; }}
@@ -188,8 +188,18 @@ def _inject_theme() -> None:
 # ---------------------------------------------------------------------------
 def _status_badge(status: str) -> str:
     s = (status or "").lower()
-    cls = "badge-success" if s == "success" else ("badge-fallback" if s == "fallback" else "badge-failed")
-    return f'<span class="badge {cls}">{s or "unknown"}</span>'
+    if s == "success":
+        color, bg = "#2E7D32", "#0a2a0a"
+    elif s == "fallback":
+        color, bg = "#1565C0", "#0a1a2e"
+    else:
+        color, bg = "#C62828", "#2d0a0a"
+    return (
+        f"<span style='display:inline-block;padding:2px 10px;border-radius:12px;"
+        f"background:{bg};color:{color};border:1px solid {color}66;"
+        f"font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;'>"
+        f"{s or 'unknown'}</span>"
+    )
 
 
 def _domain_status(domain: str) -> str:

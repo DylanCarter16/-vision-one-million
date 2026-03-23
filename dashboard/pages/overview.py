@@ -20,11 +20,20 @@ CARD_BG = "#1E2329"
 DOMAIN_ORDER = ["housing", "transportation", "healthcare", "employment", "placemaking"]
 
 DOMAIN_HEADLINE: dict[str, str] = {
-    "housing": "housing_starts_total",
-    "transportation": "transit_ridership",
-    "healthcare": "er_wait_times",
-    "employment": "unemployment_rate",
-    "placemaking": "park_access",
+    "housing":        "building_homes_needed",
+    "transportation": "transit_ridership_target",
+    "healthcare":     "er_wait_target",
+    "employment":     "regional_employment",
+    "placemaking":    "ghg_reduction",
+}
+
+# Human-readable unit override shown on the card below the value
+DOMAIN_UNIT_LABEL: dict[str, str] = {
+    "housing":        "units toward 15,000 target",
+    "transportation": "monthly boardings",
+    "healthcare":     "hrs ER wait (target: <3.0)",
+    "employment":     "% employment rate",
+    "placemaking":    "% toward GHG target",
 }
 
 # Short display label for domain cards — keeps header from wrapping
@@ -54,15 +63,11 @@ def _format_value(value: float, unit: str) -> str:
     u = (unit or "").lower()
     if u == "cad":
         return f"${value:,.0f}"
-    if "trips" in u:
+    if "trips" in u or u in ("units/yr", "units", "jobs"):
         return f"{value:,.0f}"
-    if u == "units":
-        return f"{value:,.0f}"
-    if u == "%":
-        return f"{value:.1f}%"
     if u == "hours":
         return f"{value:.1f} hrs"
-    if "%" in u:
+    if "%" in u or u in ("percent", "vacancy_pct", "percent_employed"):
         return f"{value:.1f}%"
     return f"{value:,.2f}"
 
@@ -98,22 +103,22 @@ def _domain_card(col: st.delta_generator.DeltaGenerator, domain: str, df: pd.Dat
 
     value = pd.to_numeric(headline_row.get("value"), errors="coerce")
     unit = str(headline_row.get("unit") or "")
-    label = str(headline_row.get("label") or headline_row.get("metric_id") or "")
     status = str(headline_row.get("source_status") or "")
     ts_raw = str(headline_row.get("timestamp") or "")
     freshness = ts_raw[:10] if ts_raw else "—"
     formatted = _format_value(float(value), unit) if pd.notna(value) else "—"
+    unit_label = DOMAIN_UNIT_LABEL.get(domain, unit)
 
     if status == "success":
-        badge_color, badge_bg = ACCENT, "#0d2818"
+        badge_color, badge_bg = "#2E7D32", "#0a2a0a"
     elif status == "fallback":
-        badge_color, badge_bg = WARN, "#2d1e02"
+        badge_color, badge_bg = "#1565C0", "#0a1a2e"
     else:
-        badge_color, badge_bg = DANGER, "#2d0a0a"
+        badge_color, badge_bg = "#C62828", "#2d0a0a"
 
     badge = (
         f"<span style='display:inline-block;padding:2px 8px;border-radius:10px;"
-        f"background:{badge_bg};color:{badge_color};border:1px solid {badge_color}44;"
+        f"background:{badge_bg};color:{badge_color};border:1px solid {badge_color}55;"
         f"font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;'>"
         f"{status or 'unknown'}</span>"
     )
@@ -123,7 +128,7 @@ def _domain_card(col: st.delta_generator.DeltaGenerator, domain: str, df: pd.Dat
         f"<div>"
         f"<p style='color:#8B949E;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.07em;margin:0 0 4px;'>{icon} {display_name}</p>"
         f"<p style='color:#E6EDF3;font-size:1.75rem;font-weight:800;margin:4px 0 4px;line-height:1.1;'>{formatted}</p>"
-        f"<p style='color:#8B949E;font-size:0.75rem;margin:0 0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{label[:46]}</p>"
+        f"<p style='color:#8B949E;font-size:0.75rem;margin:0 0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>{unit_label}</p>"
         f"</div>"
         f"<div style='display:flex;justify-content:space-between;align-items:center;'>"
         f"{badge}"

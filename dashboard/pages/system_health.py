@@ -21,11 +21,11 @@ CARD_BG = "#1E2329"
 def _badge(status: str) -> str:
     s = (status or "").lower()
     if s == "success":
-        color, bg = ACCENT, "#0d2818"
+        color, bg = "#2E7D32", "#0a2a0a"
     elif s == "fallback":
-        color, bg = WARN, "#2d1e02"
+        color, bg = "#1565C0", "#0a1a2e"
     else:
-        color, bg = DANGER, "#2d0a0a"
+        color, bg = "#C62828", "#2d0a0a"
     return (
         f"<span style='display:inline-block;padding:2px 10px;border-radius:10px;"
         f"background:{bg};color:{color};border:1px solid {color}44;"
