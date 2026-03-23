@@ -227,15 +227,44 @@ def render(domain: str) -> None:
         unsafe_allow_html=True,
     )
 
-    # ── Historical trend chart ───────────────────────────────────────────────
+    # ── Historical trend chart with initiative selector ───────────────────────
+    st.markdown(
+        "<h2 style='font-size:1rem;font-weight:700;color:#E6EDF3;margin-bottom:4px;'>Historical Trend</h2>",
+        unsafe_allow_html=True,
+    )
+
+    label_to_metric = {m.label: m.metric_id for m in metrics_def}
+    labels = [m.label for m in metrics_def]
+
+    # Default to whichever label maps to the primary metric; fall back to first
     primary_id = DOMAIN_PRIMARY_METRIC.get(domain, "")
-    chart_metric = primary_id or (metrics_def[0].metric_id if metrics_def else "")
+    default_label = next(
+        (m.label for m in metrics_def if m.metric_id == primary_id),
+        labels[0] if labels else "",
+    )
+    default_idx = labels.index(default_label) if default_label in labels else 0
+
+    selected_label = st.selectbox(
+        "Select initiative to view trend:",
+        options=labels,
+        index=default_idx,
+        key=f"trend_select_{domain}",
+    )
+
+    chart_metric = label_to_metric.get(selected_label, "")
 
     if chart_metric:
         hist = get_metric_history(chart_metric)
-        if not hist.empty:
+        hist["value"] = pd.to_numeric(hist["value"], errors="coerce")
+        hist = hist.dropna(subset=["value"])
+
+        if len(hist) < 2:
+            st.info(
+                "Not enough historical data yet — check back after the next pipeline run.",
+                icon="📊",
+            )
+        else:
             hist = hist.copy()
-            hist["value"] = pd.to_numeric(hist["value"], errors="coerce")
             hist["date"] = pd.to_datetime(
                 {
                     "year": pd.to_numeric(hist["year"], errors="coerce").fillna(1970).astype(int),
@@ -246,7 +275,7 @@ def render(domain: str) -> None:
             )
             hist = hist.sort_values("date")
 
-            chart_title = chart_metric.replace("_", " ").title() + " — Historical Trend"
+            chart_title = f"{selected_label} — Historical Trend"
             fig = px.line(hist, x="date", y="value", markers=True,
                           title=chart_title, template="plotly_dark")
             fig.update_traces(
