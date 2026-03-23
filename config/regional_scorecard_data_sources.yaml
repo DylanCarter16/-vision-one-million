@@ -1,0 +1,58 @@
+# Regional Scorecard — Data Source Registry
+# Used by the Python ingestion pipeline to resolve endpoints, cadence, and extraction hints.
+#
+# Field reference:
+#   source_url              — API base/endpoint, CSV URL, or page URL to scrape
+#   update_frequency        — Human + machine hint (cron-friendly where applicable)
+#   data_type               — How the pipeline should fetch/parse: api | csv | web_scrape
+#   target_metric           — Scorecard KPI this feed populates (slug or display name)
+#   css_selector_or_api_key — For scrapes: CSS selector(s); for APIs: key env name or StatCan product ID;
+#                             for CSV: optional column key hint or "n/a"
+
+version: "1.0"
+scorecard:
+  name: regional_scorecard
+  region_default: "ON"  # override per-source where needed
+
+sources:
+
+  # Statistics Canada — REST API (mock URL and key placeholder; align with real StatCan Web Data Service)
+  - id: statcan_regional_labour_income
+    display_name: "Statistics Canada — Labour & income (API)"
+    source_url: "https://api.statcan.gc.ca/rest/getData/14100293/v1/en/json"
+    update_frequency:
+      label: "monthly"
+      cron: "0 6 5 * *"  # 06:00 UTC on the 5th of each month (align with release calendar)
+    data_type: api
+    target_metric: median_household_income_by_cma
+    css_selector_or_api_key: "STATCAN_API_KEY"  # env var name; StatCan WDS often uses table id in URL instead of a key
+
+  # CMHC — Housing market CSV (mock export URL; pipeline parses delimited file)
+  - id: cmhc_housing_starts_completions
+    display_name: "CMHC — Housing starts & completions (CSV)"
+    source_url: "https://www03.cmhc-schl.gc.ca/hmip-pimh/en/TableMapChart/ExportTable?table_id=1&geography_id=2270&series_id=1&format=csv"
+    update_frequency:
+      label: "monthly"
+      cron: "0 8 10 * *"
+    data_type: csv
+    target_metric: housing_starts_seasonally_adjusted
+    css_selector_or_api_key: "n/a"  # CSV: no CSS; optional column hint e.g. VALUE, REF_DATE, GEO
+
+  # Ontario Health — Wait times page (mock selectors; verify against live DOM before production)
+  - id: ontario_health_er_wait_times
+    display_name: "Ontario Health — Emergency department wait times"
+    source_url: "https://www.ontariohealth.ca/wait-times/emergency"
+    update_frequency:
+      label: "daily"
+      cron: "0 5 * * *"
+    data_type: web_scrape
+    target_metric: er_90th_percentile_wait_hours
+    css_selector_or_api_key: "section.wait-times table tbody tr td:nth-child(4)"
+
+# Ingestion defaults (optional shared settings for the Python loader)
+ingestion_defaults:
+  timeout_seconds: 60
+  retry:
+    max_attempts: 3
+    backoff_seconds: 5
+  user_agent: "RegionalScorecardBot/1.0 (+https://example.org/scorecard)"

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vision-one-million"
+version = "0.1.0"
+description = "Regional scorecard ingestion engine"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+    "playwright>=1.40.0",
+    "PyPDF2>=3.0.0",
+    "openai>=1.0.0",
+    "PyYAML>=6.0",
+    "tavily-python>=0.3.0",
+    "pydantic>=2.0",
+    "pandas>=2.0",
+    "python-dotenv>=1.0.0",
+    "langchain>=0.2.0",
+    "langchain-openai>=0.1.0",
+    "langgraph>=0.2.0",
+    "langsmith>=0.1.0",
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+packages = ["ingestion", "validation", "agent"]
