@@ -133,17 +133,21 @@ def render(domain: str) -> None:
     cards_per_row = 3
     for row_start in range(0, len(metrics_def), cards_per_row):
         row_metrics = metrics_def[row_start : row_start + cards_per_row]
-        cols = st.columns(len(row_metrics), gap="small")
-        for col, m in zip(cols, row_metrics):
+        # Always create 3 columns so padding slots exist for partial last rows
+        cols = st.columns(cards_per_row, gap="small")
+        for i, m in enumerate(row_metrics):
             cur = _current(m.metric_id, m.current)
             p = pct_achieved(m.metric_id, cur)
-            col.markdown(
+            cols[i].markdown(
                 _subcategory_card(m.label, cur, m.target, m.unit, domain_color, p),
                 unsafe_allow_html=True,
             )
-        # Pad last row if fewer than 3 cards
-        for _ in range(cards_per_row - len(row_metrics)):
-            cols[len(row_metrics) + _].empty()
+        # Fill remaining empty slots in last row only if needed
+        remainder = len(metrics_def) % cards_per_row
+        is_last_row = row_start + cards_per_row >= len(metrics_def)
+        if is_last_row and remainder != 0:
+            for _ in range(cards_per_row - remainder):
+                cols[remainder + _].empty()
 
     # ── Summary line ─────────────────────────────────────────────────────────
     st.markdown(
