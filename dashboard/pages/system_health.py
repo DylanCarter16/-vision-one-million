@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import subprocess
-import time
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -9,13 +8,15 @@ import streamlit as st
 
 from db import get_system_health
 
+ROOT = Path(__file__).resolve().parents[2]
+for _p in (str(ROOT), str(ROOT / "src")):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 ACCENT = "#00C853"
 WARN = "#FFB300"
 DANGER = "#FF5252"
 CARD_BG = "#1E2329"
-
-ROOT = Path(__file__).resolve().parents[2]
-
 
 def _badge(status: str) -> str:
     s = (status or "").lower()
@@ -61,34 +62,16 @@ def render() -> None:
         )
 
     if run_clicked:
-        placeholder = st.empty()
-        with placeholder.container():
-            with st.spinner("Running pipeline — fetching latest data…"):
-                try:
-                    proc = subprocess.run(
-                        ["python", "main.py"],
-                        cwd=ROOT,
-                        capture_output=True,
-                        text=True,
-                        check=False,
-                        timeout=300,
-                    )
-                    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-                    st.session_state["last_refresh"] = now
-                    if proc.returncode == 0:
-                        st.success(f"Pipeline complete — data refreshed at {now}")
-                    else:
-                        st.warning(f"Pipeline finished with errors (exit {proc.returncode}).")
-                    if proc.stdout:
-                        with st.expander("Pipeline output"):
-                            st.code(proc.stdout[:8000])
-                    if proc.stderr:
-                        with st.expander("Errors / warnings"):
-                            st.code(proc.stderr[:4000])
-                except subprocess.TimeoutExpired:
-                    st.error("Pipeline timed out after 5 minutes.")
-                except Exception as exc:
-                    st.error(f"Failed to start pipeline: {exc}")
+        with st.spinner("Running pipeline — fetching latest data…"):
+            try:
+                from main import run_pipeline  # noqa: PLC0415
+                successes, total = run_pipeline()
+                now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+                st.session_state["last_refresh"] = now
+                result_text = f"Pipeline complete: {successes}/{total} metrics updated"
+                st.success(f"{result_text} — refreshed at {now}")
+            except Exception as exc:
+                st.error(f"Pipeline error: {exc}")
 
         # Bust st.cache_data so tables reload with fresh data
         st.cache_data.clear()
