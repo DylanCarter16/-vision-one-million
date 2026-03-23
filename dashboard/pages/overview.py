@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import pandas as pd
 import streamlit as st
 
 from db import get_all_metrics
+
+_DASH = Path(__file__).resolve().parent.parent
+if str(_DASH) not in sys.path:
+    sys.path.insert(0, str(_DASH))
 
 ACCENT = "#00C853"
 WARN = "#FFB300"
@@ -144,7 +151,30 @@ def render() -> None:
     for i, domain in enumerate(DOMAIN_ORDER):
         _domain_card(cols[i], domain, df)
 
-    st.markdown("<div style='margin-top:32px;'></div>", unsafe_allow_html=True)
+    # ── Rating legend ────────────────────────────────────────────────────────
+    st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
+    RATINGS = [
+        ("NEEDS ATTENTION", "#C62828", "#3b0a0a", "< 40% of target"),
+        ("IN PROGRESS",     "#F9A825", "#3b2a00", "40 – 69% of target"),
+        ("ON TRACK",        "#2E7D32", "#0a2b0a", "70 – 89% of target"),
+        ("ACHIEVED",        "#00838F", "#00222a", "90%+ of target"),
+    ]
+    badge_html = "".join(
+        f"<span style='display:inline-flex;align-items:center;gap:6px;margin-right:14px;"
+        f"padding:4px 12px;border-radius:10px;background:{bg};border:1px solid {color}55;"
+        f"font-size:0.72rem;font-weight:700;color:{color};text-transform:uppercase;"
+        f"letter-spacing:0.05em;white-space:nowrap;'>"
+        f"{label} <span style='font-weight:400;color:#8B949E;font-size:0.68rem;'>{desc}</span></span>"
+        for label, color, bg, desc in RATINGS
+    )
+    st.markdown(
+        f"<div style='margin-bottom:28px;'>"
+        f"<p style='color:#8B949E;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;"
+        f"margin-bottom:8px;'>Scorecard Rating System</p>"
+        f"<div style='display:flex;flex-wrap:wrap;gap:6px;'>{badge_html}</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
 
     # ── All Latest Metrics table ─────────────────────────────────────────────
     st.markdown(

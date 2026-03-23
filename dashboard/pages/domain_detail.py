@@ -1,124 +1,191 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from db import get_domain_summary, get_metric_history
+# Resolve scorecard_data from the dashboard/ directory
+_DASH = Path(__file__).resolve().parent.parent
+if str(_DASH) not in sys.path:
+    sys.path.insert(0, str(_DASH))
 
-ACCENT = "#00C853"
-CARD_BG = "#1E2329"
+from db import get_all_metrics, get_metric_history  # noqa: E402
+from scorecard_data import (  # noqa: E402
+    DOMAIN_COLOR,
+    DOMAIN_ICON,
+    DOMAIN_PRIMARY_METRIC,
+    METRICS_BY_DOMAIN,
+    get_rating,
+    pct_achieved,
+)
+
 BG = "#0D1117"
+CARD_BG = "#1E2329"
 
 
-def _badge(status: str) -> str:
-    s = (status or "").lower()
-    color = "#00C853" if s == "success" else ("#FFB300" if s == "fallback" else "#FF5252")
-    bg = "#0d2818" if s == "success" else ("#2d1e02" if s == "fallback" else "#2d0a0a")
+def _fmt(value: float, unit: str) -> str:
+    u = (unit or "").lower()
+    if u == "cad":
+        return f"${value:,.0f}"
+    if u in ("units/yr", "units", "jobs"):
+        return f"{value:,.0f}"
+    if "trips" in u:
+        return f"{value:,.0f}"
+    if u == "hours":
+        return f"{value:.1f} hrs"
+    if "%" in u or u in ("percent", "vacancy_pct", "percent_employed"):
+        return f"{value:.1f}%"
+    return f"{value:,.2f}"
+
+
+def _overall_badge(avg_pct: float) -> str:
+    label, color, bg = get_rating(avg_pct)
     return (
-        f"<span style='display:inline-block;padding:2px 10px;border-radius:10px;"
-        f"background:{bg};color:{color};border:1px solid {color}44;"
-        f"font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;'>"
-        f"{s or 'unknown'}</span>"
+        f"<span style='display:inline-block;padding:4px 14px;border-radius:12px;"
+        f"background:{bg};color:{color};border:1px solid {color}66;"
+        f"font-size:0.8rem;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;'>"
+        f"{label} &nbsp;·&nbsp; {avg_pct:.0f}% avg</span>"
     )
+
+
+def _subcategory_card(
+    label: str,
+    current: float,
+    target: float,
+    unit: str,
+    domain_color: str,
+    pct: float,
+) -> str:
+    rating_label, rating_color, rating_bg = get_rating(pct)
+    curr_fmt = _fmt(current, unit)
+    tgt_fmt = _fmt(target, unit)
+    short_label = label if len(label) <= 38 else label[:36] + "…"
+    return f"""
+<div style="border-radius:12px;overflow:hidden;box-shadow:0 2px 8px #00000044;height:155px;display:flex;flex-direction:column;">
+  <div style="background:{domain_color};padding:12px 14px;flex:1;display:flex;align-items:center;">
+    <span style="color:#fff;font-size:0.82rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;line-height:1.25;">{short_label}</span>
+  </div>
+  <div style="background:{rating_bg};padding:8px 14px;border-top:2px solid {rating_color};">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+      <span style="color:{rating_color};font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;">{rating_label}</span>
+      <span style="color:{rating_color};font-size:0.72rem;font-weight:700;">{pct:.0f}%</span>
+    </div>
+    <span style="color:#8B949E;font-size:0.72rem;">{curr_fmt} <span style="color:#484F58;">/ {tgt_fmt}</span></span>
+  </div>
+</div>"""
 
 
 def render(domain: str) -> None:
+    domain_color = DOMAIN_COLOR.get(domain, "#1E2329")
+    icon = DOMAIN_ICON.get(domain, "📊")
+    metrics_def = METRICS_BY_DOMAIN.get(domain, [])
+
+    # Header
     st.markdown(
-        f"<h1 style='font-size:1.6rem;font-weight:800;color:#E6EDF3;margin-bottom:4px;'>{domain.title()}</h1>"
-        f"<p style='color:#8B949E;font-size:0.9rem;margin-bottom:20px;'>Historical trend & raw data</p>",
+        f"<div style='border-left:4px solid {domain_color};padding-left:14px;margin-bottom:6px;'>"
+        f"<h1 style='font-size:1.6rem;font-weight:800;color:#E6EDF3;margin:0;'>{icon} {domain.title()}</h1>"
+        f"<p style='color:#8B949E;font-size:0.9rem;margin:4px 0 0;'>Vision One Million Scorecard</p>"
+        f"</div>",
         unsafe_allow_html=True,
     )
 
-    domain_df = get_domain_summary(domain)
-    if domain_df.empty:
-        st.info(f"No metrics found for domain: {domain}")
+    if not metrics_def:
+        st.info(f"No scorecard metrics defined for domain: {domain}")
         return
 
-    flagged = domain_df["flagged"].fillna(0).astype(int).gt(0).any()
-    if flagged:
-        st.warning("⚠️ One or more metrics in this domain are flagged for analyst review.")
+    # Pull latest values from DB
+    all_df = get_all_metrics()
+    domain_df = all_df[all_df["domain"].str.lower() == domain].copy() if not all_df.empty else pd.DataFrame()
 
-    metric_ids = sorted(domain_df["metric_id"].dropna().astype(str).unique().tolist())
-    metric_id = st.selectbox(
-        "Select metric",
-        metric_ids,
-        index=0,
-        key=f"select_{domain}",
-    )
+    def _current(metric_id: str, fallback: float) -> float:
+        if not domain_df.empty:
+            row = domain_df[domain_df["metric_id"] == metric_id]
+            if not row.empty:
+                v = pd.to_numeric(row.iloc[0]["value"], errors="coerce")
+                if pd.notna(v):
+                    return float(v)
+        return fallback
 
-    # Current value card
-    cur_row = domain_df[domain_df["metric_id"] == metric_id]
-    if not cur_row.empty:
-        r = cur_row.iloc[0]
-        val = pd.to_numeric(r.get("value"), errors="coerce")
-        unit = str(r.get("unit") or "")
-        label = str(r.get("label") or metric_id)
-        status = str(r.get("source_status") or "")
-        ts = str(r.get("timestamp") or "")[:16].replace("T", " ")
-        val_str = f"{float(val):,.2f} {unit}" if pd.notna(val) else "—"
-        st.markdown(
-            f"""<div style='background:{CARD_BG};border:1px solid #30363D;border-radius:12px;padding:18px 22px;margin-bottom:20px;'>
-            <p style='color:#8B949E;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.07em;margin:0 0 4px;'>Current value</p>
-            <p style='color:#E6EDF3;font-size:2rem;font-weight:800;margin:0 0 6px;'>{val_str}</p>
-            <p style='color:#8B949E;font-size:0.78rem;margin:0 0 10px;'>{label}</p>
-            {_badge(status)} <span style='color:#484F58;font-size:0.72rem;margin-left:8px;'>Updated {ts}</span>
-            </div>""",
-            unsafe_allow_html=True,
-        )
+    # Calculate % achieved for each subcategory
+    pcts: list[float] = []
+    for m in metrics_def:
+        cur = _current(m.metric_id, m.current)
+        pcts.append(pct_achieved(m.metric_id, cur))
 
-    # History
-    hist = get_metric_history(metric_id)
-    if hist.empty:
-        st.info("No historical data available for this metric.")
-        return
+    avg_pct = sum(pcts) / len(pcts) if pcts else 0.0
+    on_track_count = sum(1 for p in pcts if p >= 70)
 
-    hist = hist.copy()
-    hist["year"] = pd.to_numeric(hist["year"], errors="coerce")
-    hist["month"] = pd.to_numeric(hist["month"], errors="coerce")
-    hist["value"] = pd.to_numeric(hist["value"], errors="coerce")
-    hist["date"] = pd.to_datetime(
-        {
-            "year": hist["year"].fillna(1970).astype(int),
-            "month": hist["month"].fillna(1).astype(int),
-            "day": 1,
-        },
-        errors="coerce",
-    )
-    hist = hist.sort_values("date")
-
-    fig = px.line(
-        hist,
-        x="date",
-        y="value",
-        markers=True,
-        title=f"{metric_id.replace('_', ' ').title()} — Historical Trend",
-        template="plotly_dark",
-    )
-    fig.update_traces(
-        line=dict(color=ACCENT, width=2.5),
-        marker=dict(color=ACCENT, size=7),
-    )
-    fig.update_layout(
-        paper_bgcolor=BG,
-        plot_bgcolor=CARD_BG,
-        font=dict(color="#8B949E"),
-        title_font=dict(color="#E6EDF3", size=14),
-        xaxis=dict(gridcolor="#21262D", linecolor="#30363D"),
-        yaxis=dict(gridcolor="#21262D", linecolor="#30363D"),
-        margin=dict(l=0, r=0, t=40, b=0),
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-    # Raw table
+    # Overall status badge
     st.markdown(
-        "<h3 style='font-size:1rem;font-weight:700;color:#E6EDF3;margin:20px 0 10px;'>Raw Data</h3>",
+        f"<div style='margin:10px 0 20px;'>{_overall_badge(avg_pct)}</div>",
         unsafe_allow_html=True,
     )
-    table = hist[["year", "month", "value", "unit", "source_status", "flagged", "timestamp"]].copy()
-    table["timestamp"] = table["timestamp"].astype(str).str[:16].str.replace("T", " ")
-    st.dataframe(table.rename(columns={
-        "year": "Year", "month": "Month", "value": "Value",
-        "unit": "Unit", "source_status": "Status",
-        "flagged": "Flagged", "timestamp": "Timestamp",
-    }), use_container_width=True, hide_index=True)
+
+    # ── Subcategory cards (3 per row) ────────────────────────────────────────
+    st.markdown(
+        "<h2 style='font-size:1rem;font-weight:700;color:#E6EDF3;margin-bottom:12px;'>Initiatives</h2>",
+        unsafe_allow_html=True,
+    )
+
+    cards_per_row = 3
+    for row_start in range(0, len(metrics_def), cards_per_row):
+        row_metrics = metrics_def[row_start : row_start + cards_per_row]
+        cols = st.columns(len(row_metrics), gap="small")
+        for col, m in zip(cols, row_metrics):
+            cur = _current(m.metric_id, m.current)
+            p = pct_achieved(m.metric_id, cur)
+            col.markdown(
+                _subcategory_card(m.label, cur, m.target, m.unit, domain_color, p),
+                unsafe_allow_html=True,
+            )
+        # Pad last row if fewer than 3 cards
+        for _ in range(cards_per_row - len(row_metrics)):
+            cols[len(row_metrics) + _].empty()
+
+    # ── Summary line ─────────────────────────────────────────────────────────
+    st.markdown(
+        f"<p style='color:#8B949E;font-size:0.85rem;margin:16px 0 28px;'>"
+        f"<strong style='color:#E6EDF3;'>{on_track_count}</strong> of "
+        f"<strong style='color:#E6EDF3;'>{len(metrics_def)}</strong> "
+        f"initiatives On Track or better</p>",
+        unsafe_allow_html=True,
+    )
+
+    # ── Historical trend chart ───────────────────────────────────────────────
+    primary_id = DOMAIN_PRIMARY_METRIC.get(domain, "")
+    chart_metric = primary_id or (metrics_def[0].metric_id if metrics_def else "")
+
+    if chart_metric:
+        hist = get_metric_history(chart_metric)
+        if not hist.empty:
+            hist = hist.copy()
+            hist["value"] = pd.to_numeric(hist["value"], errors="coerce")
+            hist["date"] = pd.to_datetime(
+                {
+                    "year": pd.to_numeric(hist["year"], errors="coerce").fillna(1970).astype(int),
+                    "month": pd.to_numeric(hist["month"], errors="coerce").fillna(1).astype(int),
+                    "day": 1,
+                },
+                errors="coerce",
+            )
+            hist = hist.sort_values("date")
+
+            chart_title = chart_metric.replace("_", " ").title() + " — Historical Trend"
+            fig = px.line(hist, x="date", y="value", markers=True,
+                          title=chart_title, template="plotly_dark")
+            fig.update_traces(
+                line=dict(color=domain_color, width=2.5),
+                marker=dict(color=domain_color, size=7),
+            )
+            fig.update_layout(
+                paper_bgcolor=BG, plot_bgcolor=CARD_BG,
+                font=dict(color="#8B949E"),
+                title_font=dict(color="#E6EDF3", size=13),
+                xaxis=dict(gridcolor="#21262D", linecolor="#30363D"),
+                yaxis=dict(gridcolor="#21262D", linecolor="#30363D"),
+                margin=dict(l=0, r=0, t=40, b=0),
+            )
+            st.plotly_chart(fig, use_container_width=True)

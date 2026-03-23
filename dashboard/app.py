@@ -9,17 +9,20 @@ from pathlib import Path
 import streamlit as st
 
 # ---------------------------------------------------------------------------
-# Ensure src/ is importable on Streamlit Cloud (no editable install there).
+# Ensure src/ and dashboard/ are importable on Streamlit Cloud.
 # ---------------------------------------------------------------------------
 _ROOT = Path(__file__).resolve().parent.parent
 _SRC = _ROOT / "src"
-if str(_SRC) not in sys.path:
-    sys.path.insert(0, str(_SRC))
+_DASH = Path(__file__).resolve().parent
+for _p in (_SRC, _DASH):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 from agent.database import init_db, insert_result  # noqa: E402
 
 from db import get_all_metrics, get_domain_summary  # noqa: E402
 from pages import domain_detail, overview, system_health  # noqa: E402
+from scorecard_data import SCORECARD_METRICS  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -36,69 +39,27 @@ _DB_PATH = _ROOT / "data" / "scorecard.db"
 
 # ---------------------------------------------------------------------------
 # Startup seeding — auto-populate if the DB is missing or empty.
+# Build seed specs directly from the canonical SCORECARD_METRICS catalogue
+# so there is a single source of truth.
 # ---------------------------------------------------------------------------
-_SEED_SPECS: list[dict] = [
-    {
-        "metric_id": "housing_starts_total",
-        "domain": "housing",
-        "label": "Housing starts (Waterloo Region)",
-        "unit": "units",
-        "low": 800.0,
-        "high": 1200.0,
-        "jitter": 40.0,
-        "integer": True,
-    },
-    {
-        "metric_id": "average_home_price",
-        "domain": "housing",
-        "label": "Average home price (Waterloo Region)",
-        "unit": "CAD",
-        "low": 650_000.0,
-        "high": 750_000.0,
-        "jitter": 3_000.0,
-        "integer": False,
-    },
-    {
-        "metric_id": "transit_ridership",
-        "domain": "transportation",
-        "label": "Transit ridership (Grand River Transit)",
-        "unit": "trips/month",
-        "low": 1_200_000.0,
-        "high": 1_800_000.0,
-        "jitter": 50_000.0,
-        "integer": True,
-    },
-    {
-        "metric_id": "unemployment_rate",
-        "domain": "employment",
-        "label": "Unemployment rate (Waterloo Region)",
-        "unit": "%",
-        "low": 4.5,
-        "high": 6.5,
-        "jitter": 0.15,
-        "integer": False,
-    },
-    {
-        "metric_id": "er_wait_times",
-        "domain": "healthcare",
-        "label": "ER wait time — 90th percentile (Waterloo Region)",
-        "unit": "hours",
-        "low": 3.5,
-        "high": 6.5,
-        "jitter": 0.2,
-        "integer": False,
-    },
-    {
-        "metric_id": "park_access",
-        "domain": "placemaking",
-        "label": "Park access score (Waterloo Region)",
-        "unit": "% residents within 500m",
-        "low": 68.0,
-        "high": 78.0,
-        "jitter": 0.5,
-        "integer": False,
-    },
-]
+def _build_seed_specs() -> list[dict]:
+    specs = []
+    for m in SCORECARD_METRICS:
+        low = m.current * 0.88
+        high = m.current * 1.12
+        specs.append(
+            {
+                "metric_id": m.metric_id,
+                "domain": m.domain,
+                "label": m.label,
+                "unit": m.unit,
+                "low": low,
+                "high": high,
+                "jitter": m.jitter if m.jitter > 0 else abs(m.current) * 0.02 + 0.001,
+                "integer": m.integer,
+            }
+        )
+    return specs
 
 
 def _db_has_rows() -> bool:
@@ -119,16 +80,17 @@ def _db_has_rows() -> bool:
 
 
 def seed_if_empty() -> None:
-    """Insert 12 months of sample data for Waterloo Region if the database is empty."""
+    """Insert 12 months of sample data for all scorecard metrics if the database is empty."""
     if _db_has_rows():
         return
     init_db(_DB_PATH)
     rng = random.Random(42)
     year = 2024
+    seed_specs = _build_seed_specs()
     for month in range(1, 13):
         ts = datetime(year, month, 15, 14, 0, 0, tzinfo=timezone.utc).isoformat()
         seasonal = 0.5 * (month - 6.5) / 6.0
-        for spec in _SEED_SPECS:
+        for spec in seed_specs:
             base = rng.uniform(spec["low"], spec["high"])
             noise = rng.gauss(0, spec["jitter"])
             raw = base + noise + seasonal * (spec["high"] - spec["low"]) * 0.03
