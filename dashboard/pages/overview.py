@@ -72,34 +72,22 @@ def _format_value(value: float, unit: str) -> str:
     return f"{value:,.2f}"
 
 
-def _domain_card(col: st.delta_generator.DeltaGenerator, domain: str, df: pd.DataFrame) -> None:
+def _card_html(domain: str, df: pd.DataFrame) -> str:
+    """Return the inner HTML for one domain card (no outer wrapper)."""
     rows = df[df["domain"].str.lower() == domain]
     icon = DOMAIN_ICON.get(domain, "📊")
-    display_name = DOMAIN_LABEL.get(domain, domain.title())
-    n_metrics = len(rows)
-
-    # Fixed min-height keeps all cards the same height regardless of content
-    base_style = (
-        f"background:{CARD_BG};border:1px solid #30363D;border-radius:14px;"
-        f"padding:20px 18px;min-height:180px;display:flex;flex-direction:column;justify-content:space-between;"
-    )
+    display_name = DOMAIN_LABEL.get(domain, domain.title()).upper()
 
     if rows.empty:
-        col.markdown(
-            f"<div style='{base_style}'>"
-            f"<p style='color:#8B949E;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.07em;margin:0 0 6px;'>{icon} {display_name}</p>"
-            f"<p style='color:#484F58;font-size:1rem;margin:0;'>No data</p>"
-            f"</div>",
-            unsafe_allow_html=True,
+        return (
+            f"<p style='color:#8B949E;font-size:11px;font-weight:700;text-transform:uppercase;"
+            f"letter-spacing:0.1em;margin:0 0 8px;white-space:nowrap;'>{icon} {display_name}</p>"
+            f"<p style='color:#484F58;font-size:13px;margin:0;'>No data</p>"
         )
-        return
 
     headline_id = DOMAIN_HEADLINE.get(domain, "")
-    if headline_id:
-        hr = rows[rows["metric_id"] == headline_id]
-        headline_row = hr.iloc[0] if not hr.empty else rows.iloc[0]
-    else:
-        headline_row = rows.iloc[0]
+    hr = rows[rows["metric_id"] == headline_id] if headline_id else pd.DataFrame()
+    headline_row = hr.iloc[0] if not hr.empty else rows.iloc[0]
 
     value = pd.to_numeric(headline_row.get("value"), errors="coerce")
     unit = str(headline_row.get("unit") or "")
@@ -116,26 +104,38 @@ def _domain_card(col: st.delta_generator.DeltaGenerator, domain: str, df: pd.Dat
     else:
         badge_color, badge_bg = "#C62828", "#2d0a0a"
 
-    badge = (
-        f"<span style='display:inline-block;padding:2px 8px;border-radius:10px;"
-        f"background:{badge_bg};color:{badge_color};border:1px solid {badge_color}55;"
-        f"font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;'>"
-        f"{status or 'unknown'}</span>"
-    )
+    return f"""
+<p style='color:#8B949E;font-size:11px;font-weight:700;text-transform:uppercase;
+letter-spacing:0.1em;margin:0 0 6px;white-space:nowrap;overflow:hidden;
+text-overflow:ellipsis;'>{icon} {display_name}</p>
+<p style='color:#E6EDF3;font-size:26px;font-weight:800;margin:0 0 4px;
+line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{formatted}</p>
+<p style='color:#8B949E;font-size:11px;margin:0 0 10px;white-space:nowrap;
+overflow:hidden;text-overflow:ellipsis;'>{unit_label}</p>
+<div style='margin-top:auto;'>
+  <span style='display:inline-block;padding:2px 7px;border-radius:8px;
+  background:{badge_bg};color:{badge_color};border:1px solid {badge_color}55;
+  font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;
+  white-space:nowrap;'>{status or 'unknown'}</span>
+  <p style='color:#484F58;font-size:10px;margin:4px 0 0;'>Updated: {freshness}</p>
+</div>"""
 
-    col.markdown(
-        f"<div style='{base_style}'>"
-        f"<div>"
-        f"<p style='color:#8B949E;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.07em;margin:0 0 4px;'>{icon} {display_name}</p>"
-        f"<p style='color:#E6EDF3;font-size:1.75rem;font-weight:800;margin:4px 0 4px;line-height:1.1;'>{formatted}</p>"
-        f"<p style='color:#8B949E;font-size:0.75rem;margin:0 0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>{unit_label}</p>"
+
+def _domain_cards_row(df: pd.DataFrame) -> str:
+    """Render all 5 domain cards as a single flex-row HTML block."""
+    card_style = (
+        "flex:1;min-width:0;background:#1E2329;border:1px solid #30363D;"
+        "border-radius:12px;padding:16px 14px;height:160px;box-sizing:border-box;"
+        "display:flex;flex-direction:column;overflow:hidden;"
+    )
+    cards = "".join(
+        f"<div style='{card_style}'>{_card_html(domain, df)}</div>"
+        for domain in DOMAIN_ORDER
+    )
+    return (
+        f"<div style='display:flex;gap:12px;width:100%;margin-bottom:28px;'>"
+        f"{cards}"
         f"</div>"
-        f"<div style='display:flex;justify-content:space-between;align-items:center;'>"
-        f"{badge}"
-        f"<span style='color:#484F58;font-size:0.68rem;'>{n_metrics} metric{'s' if n_metrics!=1 else ''} · {freshness}</span>"
-        f"</div>"
-        f"</div>",
-        unsafe_allow_html=True,
     )
 
 
@@ -152,9 +152,7 @@ def render() -> None:
         return
 
     # ── Domain health cards ──────────────────────────────────────────────────
-    cols = st.columns(len(DOMAIN_ORDER), gap="small")
-    for i, domain in enumerate(DOMAIN_ORDER):
-        _domain_card(cols[i], domain, df)
+    st.markdown(_domain_cards_row(df), unsafe_allow_html=True)
 
     # ── Rating legend ────────────────────────────────────────────────────────
     st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
