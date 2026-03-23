@@ -1,0 +1,33 @@
+version: "1.0"
+region: "Waterloo Region"
+
+metrics:
+  - metric_id: housing_starts_total
+    domain: housing
+    label: "Housing starts (Waterloo Region)"
+    unit: "units"
+    source_url: "https://www150.statcan.gc.ca/n1/daily-quotidien/250117/dq250117c-eng.htm"
+
+  - metric_id: average_home_price
+    domain: housing
+    label: "Average home price (Waterloo Region)"
+    unit: "CAD"
+    source_url: "https://trreb.ca/index.php/market-stats"
+
+  - metric_id: transit_ridership
+    domain: transportation
+    label: "Transit ridership (Grand River Transit)"
+    unit: "trips/month"
+    source_url: "https://www.regionofwaterloo.ca/en/living-here/transportation-master-plan.aspx"
+
+  - metric_id: unemployment_rate
+    domain: employment
+    label: "Unemployment rate (Waterloo Region)"
+    unit: "%"
+    source_url: "https://www.workforceplanningboard.org/labour-market-information/"
+
+  - metric_id: er_wait_times
+    domain: healthcare
+    label: "ER wait time (hours)"
+    unit: "hours"
+    source_url: "https://www.ontariohealth.ca/wait-times"
