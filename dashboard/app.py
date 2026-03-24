@@ -79,10 +79,13 @@ def _db_has_rows() -> bool:
         return False
 
 
-def seed_if_empty() -> None:
-    """Insert 12 months of sample data for all scorecard metrics if the database is empty."""
+def seed_if_empty() -> bool:
+    """
+    Insert 12 months of sample data for all scorecard metrics if the database is empty.
+    Returns True if seeding actually ran (so callers can clear the data cache).
+    """
     if _db_has_rows():
-        return
+        return False
     init_db(_DB_PATH)
     rng = random.Random(42)
     year = 2024
@@ -106,12 +109,14 @@ def seed_if_empty() -> None:
                     "year": year,
                     "month": month,
                     "source_status": "success",
+                    "source_name": "Seed data (historical baseline)",
                     "flagged": 0,
                     "in_human_review": 0,
                     "timestamp": ts,
                 },
                 db_path=_DB_PATH,
             )
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -238,7 +243,6 @@ def _last_updated_text() -> str:
 # App shell
 # ---------------------------------------------------------------------------
 def main() -> None:
-    seed_if_empty()
     st.set_page_config(
         page_title="Vision One Million | Waterloo Region",
         page_icon="🏙️",
@@ -246,6 +250,12 @@ def main() -> None:
         initial_sidebar_state="expanded",
     )
     _inject_theme()
+
+    # Seed DB if empty, then bust any stale cache so pages see fresh data.
+    with st.spinner("Loading scorecard data…"):
+        seeded = seed_if_empty()
+    if seeded:
+        st.cache_data.clear()
 
     with st.sidebar:
         st.markdown(
