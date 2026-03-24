@@ -64,6 +64,11 @@ def _tavily_search(query: str, lo: float = float("-inf"), hi: float = float("inf
         return None
 
 
+_SRC_ODC    = "Ontario Data Catalogue — Housing Supply"
+_SRC_CMHC   = "CMHC Rental Market Report"
+_SRC_TAVILY = "Tavily Web Search"
+
+
 def _store(
     metric_id: str,
     domain: str,
@@ -72,6 +77,7 @@ def _store(
     unit: str,
     status: str,
     now: datetime,
+    source_name: str = "",
 ) -> None:
     insert_result(
         {
@@ -83,6 +89,7 @@ def _store(
             "year": now.year,
             "month": now.month,
             "source_status": status,
+            "source_name": source_name,
             "flagged": 0,
             "in_human_review": 0,
             "timestamp": now.isoformat(),
@@ -133,47 +140,62 @@ class HousingFetcher:
         except Exception as exc:
             logger.warning("Ontario Data Catalogue fetch failed: %s", exc)
 
-        logger.info("Falling back to Tavily for housing starts")
+        # ── Priority 3: Tavily ───────────────────────────────────────────────
+        # Expect annual housing starts ~3,000–10,000 for Waterloo Region
+        print("    → Priority 3 (Tavily)…")
         val = _tavily_search(
-            "Waterloo Region housing starts 2025 CMHC annual units",
-            lo=500, hi=30_000,
+            "Kitchener-Cambridge-Waterloo Region annual housing starts 2025 CMHC new units",
+            lo=1_000, hi=15_000,
         )
+        if val is not None:
+            print(f"    ✓ Priority 3 (Tavily): building_homes_needed = {val:,.0f} units")
         return val, "tavily"
 
     def fetch_rental_vacancy(self) -> tuple[float | None, str]:
         """
-        Scrape CMHC rental market reports page for Kitchener vacancy rate.
-        Falls back to Tavily.
+        Priority 2: Scrape CMHC rental market report for Kitchener vacancy rate.
+        Priority 3: Tavily.
+        Kitchener vacancy rate historically 1.0–4.0% — reject outliers.
         """
+        # ── Priority 2: CMHC scrape ──────────────────────────────────────────
         try:
             from bs4 import BeautifulSoup
 
+            print("    → Priority 2 (CMHC scrape)…")
             resp = requests.get(_CMHC_URL, headers=_HEADERS, timeout=_TIMEOUT)
             resp.raise_for_status()
             soup = BeautifulSoup(resp.text, "html.parser")
-
-            # Look for vacancy rate figures near Kitchener keyword
             text = soup.get_text(" ", strip=True)
-            # Search for patterns like "Kitchener ... vacancy ... 2.4%"
-            vacancy_match = re.search(
-                r"Kitchener(?:[^%]{0,200}?)(\d+\.\d+)\s*%", text, re.IGNORECASE
-            )
-            if vacancy_match:
-                val = float(vacancy_match.group(1))
-                if 0.0 <= val <= 20.0:
-                    logger.info("CMHC rental vacancy rate for KCW: %.2f%%", val)
-                    return val, "cmhc"
 
-            logger.warning("CMHC page found but Kitchener vacancy rate not located in text")
+            # Pattern: "Kitchener … X.X%"
+            for pattern in (
+                r"Kitchener(?:[^%]{0,200}?)(\d+\.\d+)\s*%",
+                r"(\d+\.\d+)\s*%(?:[^%]{0,200}?)Kitchener",
+            ):
+                m = re.search(pattern, text, re.IGNORECASE)
+                if m:
+                    val = float(m.group(1))
+                    if 0.1 <= val <= 8.0:   # KCW range; reject national-level numbers
+                        logger.info("CMHC rental vacancy rate for KCW: %.2f%%", val)
+                        print(f"    ✓ Priority 2 (CMHC): vacancy_rate = {val:.2f}%")
+                        return val, "cmhc"
+                    logger.warning("CMHC vacancy value %.2f%% outside KCW expected range", val)
+
+            logger.warning("CMHC page fetched but Kitchener vacancy rate not found")
+            print("    ✗ Priority 2 (CMHC): Kitchener vacancy not found in page")
 
         except Exception as exc:
             logger.warning("CMHC scrape failed: %s", exc)
+            print(f"    ✗ Priority 2 (CMHC): {exc}")
 
-        logger.info("Falling back to Tavily for rental vacancy rate")
+        # ── Priority 3: Tavily ───────────────────────────────────────────────
+        print("    → Priority 3 (Tavily)…")
         val = _tavily_search(
-            "Kitchener Cambridge Waterloo rental vacancy rate 2024 CMHC percent",
-            lo=0.1, hi=20.0,
+            "Kitchener Cambridge Waterloo rental vacancy rate 2025 CMHC percent apartment",
+            lo=0.1, hi=8.0,
         )
+        if val is not None:
+            print(f"    ✓ Priority 3 (Tavily): vacancy_rate = {val:.2f}%")
         return val, "tavily"
 
     def run_and_store(self) -> dict[str, Any]:
@@ -184,23 +206,25 @@ class HousingFetcher:
         status = "success" if starts_src == "ontario_data_catalogue" else (
             "fallback" if starts_val else "failed"
         )
+        src_name = _SRC_ODC if starts_src == "ontario_data_catalogue" else _SRC_TAVILY
         print(f"  building_homes_needed: {starts_val} ({status} via {starts_src})")
         if starts_val is not None:
             _store(
                 "building_homes_needed", self.DOMAIN,
                 "Building the Homes We Need",
-                starts_val, "units/yr", status, now,
+                starts_val, "units/yr", status, now, source_name=src_name,
             )
         results["building_homes_needed"] = {"value": starts_val, "status": status, "source": starts_src}
 
         vac_val, vac_src = self.fetch_rental_vacancy()
         status = "success" if vac_src == "cmhc" else ("fallback" if vac_val else "failed")
+        src_name = _SRC_CMHC if vac_src == "cmhc" else _SRC_TAVILY
         print(f"  balanced_rental_market: {vac_val} ({status} via {vac_src})")
         if vac_val is not None:
             _store(
                 "balanced_rental_market", self.DOMAIN,
                 "Balanced Market for Rental Housing",
-                vac_val, "vacancy_pct", status, now,
+                vac_val, "vacancy_pct", status, now, source_name=src_name,
             )
         results["balanced_rental_market"] = {"value": vac_val, "status": status, "source": vac_src}
 

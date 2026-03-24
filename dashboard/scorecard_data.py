@@ -153,14 +153,18 @@ for _m in SCORECARD_METRICS:
     METRICS_BY_DOMAIN.setdefault(_m.domain, []).append(_m)
 
 
+# Metrics where a LOWER value is better; we invert the ratio so the dashboard
+# correctly reads "below target = bad, at/above target = achieved".
+LOWER_IS_BETTER: set[str] = {"er_wait_target"}
+
+
 def pct_achieved(metric_id: str, current_value: float) -> float:
-    """Return % of target achieved (0–100+), capped at 110 for display."""
+    """Return % of target achieved (0–100), capped at 100."""
     m = METRIC_BY_ID.get(metric_id)
     if m is None or m.target == 0:
         return 0.0
-    # For metrics where lower is better (er_wait_target), invert the ratio
-    if m.unit == "hours" and m.metric_id == "er_wait_target":
+    if metric_id in LOWER_IS_BETTER:
         raw = (m.target / current_value) * 100 if current_value > 0 else 0.0
     else:
         raw = (current_value / m.target) * 100
-    return round(min(raw, 110.0), 1)
+    return round(min(raw, 100.0), 1)

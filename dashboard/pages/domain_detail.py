@@ -17,6 +17,7 @@ from scorecard_data import (  # noqa: E402
     DOMAIN_COLOR,
     DOMAIN_ICON,
     DOMAIN_PRIMARY_METRIC,
+    LOWER_IS_BETTER,
     METRICS_BY_DOMAIN,
     get_rating,
     pct_achieved,
@@ -27,18 +28,79 @@ CARD_BG = "#1E2329"
 
 
 def _fmt(value: float, unit: str) -> str:
+    """Format a single value with its unit."""
     u = (unit or "").lower()
     if u == "cad":
         return f"${value:,.0f}"
-    if u in ("units/yr", "units", "jobs"):
-        return f"{value:,.0f}"
-    if "trips" in u:
+    if u in ("units/yr", "units", "jobs") or "trips" in u:
         return f"{value:,.0f}"
     if u == "hours":
         return f"{value:.1f} hrs"
-    if "%" in u or u in ("percent", "vacancy_pct", "percent_employed"):
+    if u in ("percent", "vacancy_pct", "percent_employed") or "%" in u:
         return f"{value:.1f}%"
-    return f"{value:,.2f}"
+    return f"{value:,.1f}"
+
+
+# Unit suffix to append after a bare number in value/target display
+_UNIT_SUFFIX: dict[str, str] = {
+    "units/yr":         " units",
+    "units":            " units",
+    "jobs":             " jobs",
+    "trips/month":      " trips",
+    "km":               " km",
+    "hours":            " hrs",
+    "percent":          "%",
+    "vacancy_pct":      "% vacancy rate",
+    "percent_employed": "% employment rate",
+    "cad":              "",   # handled with $ prefix
+}
+
+# Contextual label appended after target value
+_TARGET_SUFFIX: dict[str, str] = {
+    "percent":          "% target",
+    "vacancy_pct":      "% target",
+    "percent_employed": "% target",
+}
+
+
+def _value_line(metric_id: str, current: float, target: float, unit: str, pct: float) -> str:
+    """
+    Build the current / target display line for a card.
+    Always shows the real-world values with their units.
+    Never shows a percentage-of-a-percentage pattern.
+    """
+    u = (unit or "").lower()
+
+    # Format the numbers
+    if u == "cad":
+        curr_str, tgt_str = f"${current:,.0f}", f"${target:,.0f}"
+        unit_sfx, tgt_sfx = "", " target"
+    elif u in ("percent", "vacancy_pct", "percent_employed"):
+        curr_str = f"{current:.1f}"
+        tgt_str  = f"{target:.1f}"
+        unit_sfx = _UNIT_SUFFIX.get(u, "%")
+        tgt_sfx  = _TARGET_SUFFIX.get(u, "% target")
+    elif u == "hours":
+        curr_str, tgt_str = f"{current:.1f}", f"{target:.1f}"
+        unit_sfx, tgt_sfx = " hrs", " hrs target"
+    else:
+        curr_str = f"{int(current):,}" if current == int(current) else f"{current:,.1f}"
+        tgt_str  = f"{int(target):,}"  if target  == int(target)  else f"{target:,.1f}"
+        unit_sfx = _UNIT_SUFFIX.get(u, "")
+        tgt_sfx  = (unit_sfx + " target") if unit_sfx else " target"
+
+    target_met = pct >= 100.0
+    met_note = (
+        "&nbsp;<span style='color:#00838F;font-size:0.63rem;'>Target met ✓</span>"
+        if target_met else ""
+    )
+
+    return (
+        f"<span style='color:#C9D1D9;font-size:0.72rem;font-weight:700;'>"
+        f"{curr_str}{unit_sfx}</span>"
+        f"<span style='color:#484F58;font-size:0.72rem;'> / {tgt_str}{tgt_sfx}</span>"
+        f"{met_note}"
+    )
 
 
 def _overall_badge(avg_pct: float) -> str:
@@ -51,66 +113,25 @@ def _overall_badge(avg_pct: float) -> str:
     )
 
 
-_SOURCE_LABEL: dict[str, str] = {
-    "success":  "✅ Live source — direct fetch",
-    "fallback": "🔍 Tavily web search — primary source unavailable",
-    "failed":   "❌ Data unavailable",
-}
-
-
-def _unit_suffix(unit: str) -> str:
-    """Return a short human-readable unit label to append after a number."""
-    u = (unit or "").lower()
-    if u in ("units/yr", "units"):
-        return " units"
-    if "trips" in u:
-        return " trips"
-    if u == "jobs":
-        return " jobs"
-    if u == "km":
-        return " km"
-    if u in ("hours",):
-        return " hrs"
-    # percent-like units carry their own symbol via _fmt — no extra suffix
-    return ""
-
-
-def _value_line(current: float, target: float, unit: str, pct: float) -> str:
-    """
-    Build the value/target display line for a card.
-
-    For percentage metrics: "54% of goal  (54.2 / 100.0%)"
-    For all others:          "1,800,255 trips / 2,000,000 trips target"
-    """
-    u = (unit or "").lower()
-    is_pct = "%" in u or u in ("percent", "vacancy_pct", "percent_employed")
-    if is_pct:
-        curr_fmt = _fmt(current, unit)
-        tgt_fmt = _fmt(target, unit)
-        return (
-            f"<span style='color:#8B949E;font-size:0.72rem;'>"
-            f"<strong style='color:#C9D1D9;'>{pct:.0f}%</strong> of goal"
-            f"&nbsp;&nbsp;"
-            f"<span style='color:#484F58;'>({curr_fmt} / {tgt_fmt})</span>"
-            f"</span>"
-        )
-    suffix = _unit_suffix(unit)
-    if u == "cad":
-        curr_str = f"${current:,.0f}"
-        tgt_str = f"${target:,.0f}"
-        return (
-            f"<span style='color:#C9D1D9;font-size:0.72rem;font-weight:700;'>{curr_str}</span>"
-            f"<span style='color:#484F58;font-size:0.72rem;'> / {tgt_str} target</span>"
-        )
-    curr_str = f"{current:,.0f}{suffix}"
-    tgt_str = f"{target:,.0f}{suffix}"
-    return (
-        f"<span style='color:#C9D1D9;font-size:0.72rem;font-weight:700;'>{curr_str}</span>"
-        f"<span style='color:#484F58;font-size:0.72rem;'> / {tgt_str} target</span>"
-    )
+def _source_caption(source_name: str, source_status: str) -> str:
+    """Return a human-readable source caption for a card."""
+    s = (source_status or "").lower()
+    if source_name:
+        if s == "fallback":
+            return f"🔍 {source_name}"
+        if s == "failed":
+            return "❌ Data unavailable"
+        return f"✅ {source_name}"
+    # Fallback when no source_name stored (older seeded rows)
+    return {
+        "success":  "✅ Live source — direct fetch",
+        "fallback": "🔍 Tavily web search — primary source unavailable",
+        "failed":   "❌ Data unavailable",
+    }.get(s, "❌ Data unavailable")
 
 
 def _subcategory_card(
+    metric_id: str,
     label: str,
     current: float,
     target: float,
@@ -118,18 +139,20 @@ def _subcategory_card(
     domain_color: str,
     pct: float,
     source_status: str = "",
+    source_name: str = "",
 ) -> str:
     rating_label, rating_color, rating_bg = get_rating(pct)
-    src_text = _SOURCE_LABEL.get((source_status or "").lower(), "❌ Data unavailable")
-    val_line = _value_line(current, target, unit, pct)
+    val_line = _value_line(metric_id, current, target, unit, pct)
+    src_text = _source_caption(source_name, source_status)
     return f"""
 <div style="border-radius:12px;overflow:hidden;box-shadow:0 2px 8px #00000044;display:flex;flex-direction:column;">
   <div style="background:{domain_color};padding:12px 14px;min-height:60px;display:flex;align-items:flex-start;">
     <span style="color:#fff;font-size:0.82rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;line-height:1.3;word-wrap:break-word;overflow-wrap:break-word;">{label}</span>
   </div>
   <div style="background:{rating_bg};padding:8px 14px;border-top:2px solid {rating_color};">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+    <div style="margin-bottom:4px;">
       <span style="color:{rating_color};font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;">{rating_label}</span>
+      <span style="color:#484F58;font-size:0.68rem;"> — {pct:.0f}% of goal</span>
     </div>
     <div style="margin-bottom:4px;">{val_line}</div>
     <div style="margin-top:2px;color:#484F58;font-size:0.63rem;">{src_text}</div>
@@ -175,6 +198,13 @@ def render(domain: str) -> None:
                 return str(row.iloc[0].get("source_status") or "")
         return "failed"
 
+    def _source_name(metric_id: str) -> str:
+        if not domain_df.empty:
+            row = domain_df[domain_df["metric_id"] == metric_id]
+            if not row.empty:
+                return str(row.iloc[0].get("source_name") or "")
+        return ""
+
     # Calculate % achieved for each subcategory
     pcts: list[float] = []
     for m in metrics_def:
@@ -206,8 +236,9 @@ def render(domain: str) -> None:
             p = pct_achieved(m.metric_id, cur)
             cols[i].markdown(
                 _subcategory_card(
-                    m.label, cur, m.target, m.unit, domain_color, p,
+                    m.metric_id, m.label, cur, m.target, m.unit, domain_color, p,
                     source_status=_source_status(m.metric_id),
+                    source_name=_source_name(m.metric_id),
                 ),
                 unsafe_allow_html=True,
             )

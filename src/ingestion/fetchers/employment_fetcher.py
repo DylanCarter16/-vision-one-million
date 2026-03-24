@@ -104,6 +104,10 @@ def _tavily_search(query: str, lo: float, hi: float) -> float | None:
         return None
 
 
+_SRC_STATCAN = "Statistics Canada Labour Force Survey"
+_SRC_TAVILY  = "Tavily Web Search"
+
+
 def _store(
     metric_id: str,
     domain: str,
@@ -112,6 +116,7 @@ def _store(
     unit: str,
     status: str,
     now: datetime,
+    source_name: str = "",
 ) -> None:
     insert_result(
         {
@@ -123,6 +128,7 @@ def _store(
             "year": now.year,
             "month": now.month,
             "source_status": status,
+            "source_name": source_name,
             "flagged": 0,
             "in_human_review": 0,
             "timestamp": now.isoformat(),
@@ -136,46 +142,71 @@ class EmploymentFetcher:
     DOMAIN = "employment"
 
     def fetch_unemployment_rate(self) -> tuple[float | None, str]:
-        """Return (value, source) where source is 'statcan' or 'tavily'."""
-        # Characteristic member 3 = Unemployment rate
+        """
+        Priority 1: StatCan WDS API for KCW CMA unemployment rate.
+        Priority 3: Tavily hyper-specific query.
+        Returns (value %, source_key).
+        """
+        # ── Priority 1: StatCan WDS ──────────────────────────────────────────
         try:
-            points = _wds_latest(_coord(3))
+            points = _wds_latest(_coord(3))  # char 3 = Unemployment rate
             value = _extract_float(points)
-            if value is not None:
+            if value is not None and 0.5 <= value <= 20.0:
+                print(f"    ✓ Priority 1 (StatCan API): unemployment_rate = {value:.1f}%")
                 logger.info("StatCan unemployment rate for KCW: %.1f%%", value)
                 return value, "statcan"
-            logger.warning("StatCan returned empty data for unemployment rate")
+            logger.warning("StatCan unemployment rate out of expected range or empty")
+            print("    ✗ Priority 1 (StatCan): no valid unemployment rate in response")
         except Exception as exc:
             logger.warning("StatCan API failed for unemployment_rate: %s", exc)
+            print(f"    ✗ Priority 1 (StatCan): {exc}")
 
-        logger.info("Falling back to Tavily for unemployment rate")
-        # Unemployment rate is typically 3–15%
+        # ── Priority 3: Tavily ───────────────────────────────────────────────
+        print("    → Priority 3 (Tavily)…")
         value = _tavily_search(
-            "Kitchener Cambridge Waterloo unemployment rate 2025 Statistics Canada percent",
+            "Kitchener-Cambridge-Waterloo CMA unemployment rate 2026 "
+            "Statistics Canada Labour Force Survey percent",
             lo=2.0, hi=15.0,
         )
+        if value is not None:
+            print(f"    ✓ Priority 3 (Tavily): unemployment_rate = {value:.1f}%")
         return value, "tavily"
 
     def fetch_employment_rate(self) -> tuple[float | None, str]:
-        """Return (value, source) for employment rate (% employed)."""
-        # Characteristic member 2 = Employment rate
+        """
+        Compute % of labour force employed as (100 - unemployment_rate).
+        target=96 means 4% unemployment (96% employed).
+        Priority 1: StatCan; Priority 3: Tavily.
+        """
+        # ── Priority 1: StatCan WDS — derive from unemployment rate ──────────
         try:
-            points = _wds_latest(_coord(2))
-            value = _extract_float(points)
-            if value is not None:
-                logger.info("StatCan employment rate for KCW: %.1f%%", value)
-                return value, "statcan"
-            logger.warning("StatCan returned empty data for employment rate")
+            points = _wds_latest(_coord(3))  # char 3 = Unemployment rate
+            unemp = _extract_float(points)
+            if unemp is not None and 0.5 <= unemp <= 20.0:
+                employed = round(100.0 - unemp, 1)
+                print(f"    ✓ Priority 1 (StatCan API): regional_employment = {employed:.1f}% "
+                      f"(unemployment {unemp:.1f}%)")
+                logger.info("Regional employment derived: %.1f%%", employed)
+                return employed, "statcan"
+            logger.warning("StatCan unemployment data missing/out-of-range for employment calc")
+            print("    ✗ Priority 1 (StatCan): could not derive employment rate")
         except Exception as exc:
-            logger.warning("StatCan API failed for employment_rate: %s", exc)
+            logger.warning("StatCan API failed for regional_employment: %s", exc)
+            print(f"    ✗ Priority 1 (StatCan): {exc}")
 
-        logger.info("Falling back to Tavily for employment rate")
-        # Employment rate is typically 55–75% (participation-based), or 90–99% for employed share
-        value = _tavily_search(
-            "Kitchener Cambridge Waterloo employment rate 2025 Statistics Canada percent employed",
-            lo=55.0, hi=99.0,
+        # ── Priority 3: Tavily ───────────────────────────────────────────────
+        print("    → Priority 3 (Tavily)…")
+        unemp = _tavily_search(
+            "Kitchener-Cambridge-Waterloo CMA unemployment rate 2026 "
+            "Statistics Canada Labour Force Survey percent",
+            lo=2.0, hi=15.0,
         )
-        return value, "tavily"
+        if unemp is not None:
+            employed = round(100.0 - unemp, 1)
+            print(f"    ✓ Priority 3 (Tavily): regional_employment = {employed:.1f}% "
+                  f"(unemployment {unemp:.1f}%)")
+            return employed, "tavily"
+        return None, "tavily"
 
     def run_and_store(self) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
@@ -183,23 +214,25 @@ class EmploymentFetcher:
 
         unemp_val, unemp_src = self.fetch_unemployment_rate()
         status = "success" if unemp_src == "statcan" else ("fallback" if unemp_val else "failed")
+        src_name = _SRC_STATCAN if unemp_src == "statcan" else _SRC_TAVILY
         print(f"  unemployment_rate: {unemp_val} ({status} via {unemp_src})")
         if unemp_val is not None:
             _store(
                 "unemployment_rate", self.DOMAIN,
                 "Unemployment rate (Waterloo Region)",
-                unemp_val, "%", status, now,
+                unemp_val, "%", status, now, source_name=src_name,
             )
         results["unemployment_rate"] = {"value": unemp_val, "status": status, "source": unemp_src}
 
         emp_val, emp_src = self.fetch_employment_rate()
         status = "success" if emp_src == "statcan" else ("fallback" if emp_val else "failed")
+        src_name = _SRC_STATCAN if emp_src == "statcan" else _SRC_TAVILY
         print(f"  regional_employment: {emp_val} ({status} via {emp_src})")
         if emp_val is not None:
             _store(
                 "regional_employment", self.DOMAIN,
                 "Strong Regional Employment",
-                emp_val, "percent_employed", status, now,
+                emp_val, "percent_employed", status, now, source_name=src_name,
             )
         results["regional_employment"] = {"value": emp_val, "status": status, "source": emp_src}
 

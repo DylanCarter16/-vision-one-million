@@ -54,6 +54,10 @@ def _tavily_search(query: str, lo: float, hi: float) -> float | None:
         return None
 
 
+_SRC_LTC    = "Ontario.ca Long-Term Care"
+_SRC_TAVILY = "Tavily Web Search"
+
+
 def _store(
     metric_id: str,
     domain: str,
@@ -62,6 +66,7 @@ def _store(
     unit: str,
     status: str,
     now: datetime,
+    source_name: str = "",
 ) -> None:
     insert_result(
         {
@@ -73,6 +78,7 @@ def _store(
             "year": now.year,
             "month": now.month,
             "source_status": status,
+            "source_name": source_name,
             "flagged": 0,
             "in_human_review": 0,
             "timestamp": now.isoformat(),
@@ -142,17 +148,20 @@ class HealthcareFetcher:
     def fetch_er_wait_times(self) -> tuple[float | None, str]:
         """
         Use Tavily to find the most recent ER wait time (hours) for Waterloo Region.
-        Tries two queries: regional summary, then specific hospitals.
+        Typical KW hospital ER wait is 2–6 hrs; cap at 8 hrs to reject outliers
+        (e.g. a 24-hour figure likely represents daily throughput, not wait time).
         """
         for query in (
-            "Waterloo Region hospital emergency department wait times 2025 hours",
-            "Grand River Hospital Cambridge Memorial Hospital ER wait time 2025 hours",
+            "Grand River Hospital Cambridge Memorial Hospital ER wait time hours 2025 2026",
+            "Waterloo Region emergency department wait times hours 2025 2026",
         ):
-            val = _tavily_search(query, lo=0.5, hi=24.0)
+            val = _tavily_search(query, lo=0.5, hi=8.0)
             if val is not None:
                 logger.info("ER wait time (Tavily): %.1f hrs", val)
+                print(f"    ✓ Priority 3 (Tavily): er_wait_target = {val:.1f} hrs")
                 return val, "tavily"
 
+        print("    ✗ Priority 3 (Tavily): no valid ER wait time found")
         return None, "tavily"
 
     def fetch_doctor_access(self) -> tuple[float | None, str]:
@@ -197,27 +206,19 @@ class HealthcareFetcher:
 
         ltc_val, ltc_src = self.fetch_ltc_waitlist()
         status = "success" if ltc_src == "ontario_ltc" else ("fallback" if ltc_val else "failed")
+        src_name = _SRC_LTC if ltc_src == "ontario_ltc" else _SRC_TAVILY
         print(f"  ltc_access: {ltc_val} ({status} via {ltc_src})")
         if ltc_val is not None:
             _store("ltc_access", self.DOMAIN, "Improved Access to LTC",
-                   ltc_val, "percent", status, now)
+                   ltc_val, "percent", status, now, source_name=src_name)
         results["ltc_access"] = {"value": ltc_val, "status": status, "source": ltc_src}
 
         er_val, er_src = self.fetch_er_wait_times()
-        # For ER waits: lower is better; target is 3.0 hrs
-        if er_val is not None:
-            if er_val < 3.0:
-                er_status = "success"
-            elif er_val < 4.0:
-                er_status = "fallback"   # on track but not primary
-            else:
-                er_status = "fallback"
-        else:
-            er_status = "failed"
+        er_status = "fallback" if er_val else "failed"  # always Tavily
         print(f"  er_wait_target: {er_val} ({er_status} via {er_src})")
         if er_val is not None:
             _store("er_wait_target", self.DOMAIN, "Emergency Department Wait Times",
-                   er_val, "hours", er_status, now)
+                   er_val, "hours", er_status, now, source_name=_SRC_TAVILY)
         results["er_wait_target"] = {"value": er_val, "status": er_status, "source": er_src}
 
         doc_val, doc_src = self.fetch_doctor_access()
@@ -225,7 +226,7 @@ class HealthcareFetcher:
         print(f"  residents_with_doctor: {doc_val} ({status} via {doc_src})")
         if doc_val is not None:
             _store("residents_with_doctor", self.DOMAIN, "Residents Connected to a Doctor",
-                   doc_val, "percent", status, now)
+                   doc_val, "percent", status, now, source_name=_SRC_TAVILY)
         results["residents_with_doctor"] = {"value": doc_val, "status": status, "source": doc_src}
 
         mh_val, mh_src = self.fetch_mental_health()
@@ -233,7 +234,7 @@ class HealthcareFetcher:
         print(f"  mental_health_support: {mh_val} ({status} via {mh_src})")
         if mh_val is not None:
             _store("mental_health_support", self.DOMAIN, "Mental Health & Addiction Support",
-                   mh_val, "percent", status, now)
+                   mh_val, "percent", status, now, source_name=_SRC_TAVILY)
         results["mental_health_support"] = {"value": mh_val, "status": status, "source": mh_src}
 
         return results

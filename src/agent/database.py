@@ -39,12 +39,18 @@ def init_db(db_path: str | Path | None = None) -> None:
                     year INTEGER,
                     month INTEGER,
                     source_status TEXT,
+                    source_name TEXT DEFAULT '',
                     flagged INTEGER NOT NULL DEFAULT 0,
                     in_human_review INTEGER NOT NULL DEFAULT 0,
                     timestamp TEXT NOT NULL
                 )
                 """
             )
+            # Migration: add source_name to tables created before this column existed
+            try:
+                conn.execute("ALTER TABLE metrics ADD COLUMN source_name TEXT DEFAULT ''")
+            except Exception:
+                pass  # Column already exists
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_metrics_metric_id_ts ON metrics (metric_id, timestamp DESC)"
             )
@@ -78,6 +84,7 @@ def insert_result(result: dict[str, Any], db_path: str | Path | None = None) -> 
             result.get("year"),
             result.get("month"),
             str(result.get("source_status", "")),
+            str(result.get("source_name") or ""),
             flagged,
             in_review,
             str(ts),
@@ -88,8 +95,8 @@ def insert_result(result: dict[str, Any], db_path: str | Path | None = None) -> 
                 """
                 INSERT INTO metrics (
                     metric_id, domain, label, value, unit, year, month,
-                    source_status, flagged, in_human_review, timestamp
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    source_status, source_name, flagged, in_human_review, timestamp
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 row,
             )
@@ -111,7 +118,8 @@ def get_latest(metric_id: str, db_path: str | Path | None = None) -> dict[str, A
             cur = conn.execute(
                 """
                 SELECT metric_id, domain, label, value, unit, year, month,
-                       source_status, flagged, in_human_review, timestamp
+                       source_status, COALESCE(source_name,'') AS source_name,
+                       flagged, in_human_review, timestamp
                 FROM metrics
                 WHERE metric_id = ?
                 ORDER BY timestamp DESC
@@ -144,7 +152,8 @@ def get_history(
             cur = conn.execute(
                 """
                 SELECT metric_id, domain, label, value, unit, year, month,
-                       source_status, flagged, in_human_review, timestamp
+                       source_status, COALESCE(source_name,'') AS source_name,
+                       flagged, in_human_review, timestamp
                 FROM metrics
                 WHERE metric_id = ?
                 ORDER BY timestamp DESC

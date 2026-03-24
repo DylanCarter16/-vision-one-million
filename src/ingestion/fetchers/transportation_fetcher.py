@@ -54,6 +54,10 @@ def _tavily_search(query: str, lo: float = float("-inf"), hi: float = float("inf
         return None
 
 
+_SRC_GRT    = "Grand River Transit Performance Report"
+_SRC_TAVILY = "Tavily Web Search"
+
+
 def _store(
     metric_id: str,
     domain: str,
@@ -62,6 +66,7 @@ def _store(
     unit: str,
     status: str,
     now: datetime,
+    source_name: str = "",
 ) -> None:
     insert_result(
         {
@@ -73,6 +78,7 @@ def _store(
             "year": now.year,
             "month": now.month,
             "source_status": status,
+            "source_name": source_name,
             "flagged": 0,
             "in_human_review": 0,
             "timestamp": now.isoformat(),
@@ -138,11 +144,14 @@ class TransportationFetcher:
         except Exception as exc:
             logger.warning("GRT page scrape failed: %s", exc)
 
-        logger.info("Falling back to Tavily for GRT ridership")
+        # ── Priority 3: Tavily ───────────────────────────────────────────────
+        print("    → Priority 3 (Tavily)…")
         val = _tavily_search(
-            "Grand River Transit ridership 2025 monthly boardings Waterloo Region",
+            "Grand River Transit GRT monthly ridership boardings 2025 Waterloo Region trips",
             lo=500_000, hi=5_000_000,
         )
+        if val is not None:
+            print(f"    ✓ Priority 3 (Tavily): transit_ridership = {val:,.0f}")
         return val, "tavily"
 
     def run_and_store(self) -> dict[str, Any]:
@@ -151,12 +160,13 @@ class TransportationFetcher:
 
         rid_val, rid_src = self.fetch_grt_ridership()
         status = "success" if rid_src == "grt" else ("fallback" if rid_val else "failed")
+        src_name = _SRC_GRT if rid_src == "grt" else _SRC_TAVILY
         print(f"  transit_ridership_target: {rid_val} ({status} via {rid_src})")
         if rid_val is not None:
             _store(
                 "transit_ridership_target", self.DOMAIN,
                 "Increase Use of Public Transit",
-                rid_val, "trips/month", status, now,
+                rid_val, "trips/month", status, now, source_name=src_name,
             )
         results["transit_ridership_target"] = {"value": rid_val, "status": status, "source": rid_src}
 

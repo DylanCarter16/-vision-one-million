@@ -16,6 +16,7 @@ METRIC_COLUMNS = [
     "year",
     "month",
     "source_status",
+    "source_name",
     "flagged",
     "timestamp",
 ]
@@ -30,11 +31,12 @@ def get_all_metrics() -> pd.DataFrame:
     """Return latest row for every metric_id as a DataFrame."""
     query = """
     WITH ranked AS (
-        SELECT metric_id, domain, label, value, unit, year, month, source_status, flagged, timestamp,
+        SELECT metric_id, domain, label, value, unit, year, month, source_status,
+               COALESCE(source_name,'') AS source_name, flagged, timestamp,
                ROW_NUMBER() OVER (PARTITION BY metric_id ORDER BY timestamp DESC) AS rn
         FROM metrics
     )
-    SELECT metric_id, domain, label, value, unit, year, month, source_status, flagged, timestamp
+    SELECT metric_id, domain, label, value, unit, year, month, source_status, source_name, flagged, timestamp
     FROM ranked
     WHERE rn = 1
     ORDER BY domain, metric_id
@@ -58,16 +60,18 @@ def get_metric_history(metric_id: str) -> pd.DataFrame:
         metric_id,
         domain,
         label,
-        AVG(value)      AS value,
+        AVG(value)                    AS value,
         unit,
         year,
         month,
         source_status,
+        COALESCE(source_name,'')      AS source_name,
         flagged,
-        MAX(timestamp)  AS timestamp
+        MAX(timestamp)                AS timestamp
     FROM metrics
     WHERE metric_id = ?
-    GROUP BY metric_id, domain, label, unit, year, COALESCE(month, 0), source_status, flagged
+    GROUP BY metric_id, domain, label, unit, year, COALESCE(month, 0), source_status,
+             COALESCE(source_name,''), flagged
     ORDER BY year ASC, COALESCE(month, 0) ASC
     """
     try:
