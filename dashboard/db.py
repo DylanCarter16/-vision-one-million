@@ -95,7 +95,12 @@ def get_system_health() -> pd.DataFrame:
     """Return last update and status for every metric."""
     all_df = get_all_metrics()
     if all_df.empty:
-        return pd.DataFrame(columns=["metric_id", "label", "source_status", "last_updated", "domain"])
-    health = all_df[["metric_id", "label", "source_status", "timestamp", "domain"]].copy()
+        return pd.DataFrame(columns=["metric_id", "label", "source_status", "source_name", "last_updated", "domain"])
+    cols = ["metric_id", "label", "source_status", "timestamp", "domain"]
+    if "source_name" in all_df.columns:
+        cols.insert(4, "source_name")
+    health = all_df[cols].copy()
+    if "source_name" not in health.columns:
+        health["source_name"] = ""
     health = health.rename(columns={"timestamp": "last_updated"})
     return health.sort_values(["source_status", "last_updated", "metric_id"], ascending=[True, False, True])

@@ -12,7 +12,7 @@ _DASH = Path(__file__).resolve().parent.parent
 if str(_DASH) not in sys.path:
     sys.path.insert(0, str(_DASH))
 
-from scorecard_data import METRICS_BY_DOMAIN, get_rating, pct_achieved  # noqa: E402
+from scorecard_data import METRIC_BY_ID, METRICS_BY_DOMAIN, get_rating, pct_achieved  # noqa: E402
 
 ACCENT = "#00C853"
 WARN = "#FFB300"
@@ -75,7 +75,7 @@ def _format_value(value: float, unit: str) -> str:
 
 
 def _domain_avg_pct(domain: str, df: pd.DataFrame) -> float:
-    """Average % of target achieved across all scorecard metrics for a domain."""
+    """Average % of target achieved (each capped at 100) across all metrics for a domain."""
     metrics_def = METRICS_BY_DOMAIN.get(domain, [])
     if not metrics_def:
         return 0.0
@@ -90,56 +90,80 @@ def _domain_avg_pct(domain: str, df: pd.DataFrame) -> float:
                 if pd.notna(v):
                     cur = float(v)
         pcts.append(pct_achieved(m.metric_id, cur))
-    return sum(pcts) / len(pcts) if pcts else 0.0
+    return round(sum(pcts) / len(pcts), 1) if pcts else 0.0
 
 
 def _hex_to_rgba(hex_color: str, alpha: float) -> str:
-    """Convert a #RRGGBB string to rgba(...) with the given opacity."""
     h = hex_color.lstrip("#")
     r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
     return f"rgba({r},{g},{b},{alpha})"
 
 
-def _card_html(domain: str, df: pd.DataFrame, rating_label: str, rating_color: str) -> str:
-    """Return the inner HTML for one domain card (no outer wrapper)."""
+def _context_line(domain: str, rows: pd.DataFrame) -> str:
+    """One-line context string showing the key metric value vs target."""
+    headline_id = DOMAIN_HEADLINE.get(domain, "")
+    if not headline_id or rows.empty:
+        return ""
+    hr = rows[rows["metric_id"] == headline_id]
+    if hr.empty:
+        return ""
+    row = hr.iloc[0]
+    value = pd.to_numeric(row.get("value"), errors="coerce")
+    unit = str(row.get("unit") or "")
+    m = METRIC_BY_ID.get(headline_id)
+    if m is None or pd.isna(value):
+        return ""
+    val = float(value)
+    u = unit.lower()
+    if u == "hours":
+        return f"{val:.1f} hrs ER wait (target: &lt;{m.target:.1f})"
+    if u in ("percent", "vacancy_pct", "percent_employed"):
+        return f"{val:.1f}% (target: {m.target:.0f}%)"
+    if "trips" in u:
+        curr_m, tgt_m = val / 1_000_000, m.target / 1_000_000
+        return f"{curr_m:.1f}M / {tgt_m:.1f}M monthly boardings"
+    curr_str = f"{int(val):,}" if val == int(val) else f"{val:,.1f}"
+    tgt_str  = f"{int(m.target):,}" if m.target == int(m.target) else f"{m.target:,.1f}"
+    ul = DOMAIN_UNIT_LABEL.get(domain, unit)
+    return f"{curr_str} / {tgt_str} {ul}"
+
+
+def _card_html(domain: str, df: pd.DataFrame, avg_pct: float,
+               rating_label: str, rating_color: str) -> str:
+    """Inner HTML for one domain card showing avg % prominently + key metric context."""
     rows = df[df["domain"].str.lower() == domain]
     icon = DOMAIN_ICON.get(domain, "📊")
     display_name = DOMAIN_LABEL.get(domain, domain.title()).upper()
+    n_initiatives = len(METRICS_BY_DOMAIN.get(domain, []))
 
     if rows.empty:
         return (
             f"<p style='color:#8B949E;font-size:11px;font-weight:700;text-transform:uppercase;"
-            f"letter-spacing:0.1em;margin:0 0 8px;white-space:nowrap;'>{icon} {display_name}</p>"
+            f"letter-spacing:0.1em;margin:0 0 8px;'>{icon} {display_name}</p>"
             f"<p style='color:#484F58;font-size:13px;margin:0;'>No data</p>"
         )
 
-    headline_id = DOMAIN_HEADLINE.get(domain, "")
-    hr = rows[rows["metric_id"] == headline_id] if headline_id else pd.DataFrame()
-    headline_row = hr.iloc[0] if not hr.empty else rows.iloc[0]
-
-    value = pd.to_numeric(headline_row.get("value"), errors="coerce")
-    unit = str(headline_row.get("unit") or "")
-    ts_raw = str(headline_row.get("timestamp") or "")
+    ts_raw = str(rows.iloc[0].get("timestamp") or "")
     freshness = ts_raw[:10] if ts_raw else "—"
-    formatted = _format_value(float(value), unit) if pd.notna(value) else "—"
-    unit_label = DOMAIN_UNIT_LABEL.get(domain, unit)
-
+    context = _context_line(domain, rows)
     badge_bg = _hex_to_rgba(rating_color, 0.15)
 
     return f"""
-<p style='color:#8B949E;font-size:11px;font-weight:700;text-transform:uppercase;
-letter-spacing:0.1em;margin:0 0 6px;white-space:nowrap;overflow:hidden;
-text-overflow:ellipsis;'>{icon} {display_name}</p>
-<p style='color:#E6EDF3;font-size:26px;font-weight:800;margin:0 0 4px;
-line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{formatted}</p>
-<p style='color:#8B949E;font-size:11px;margin:0 0 10px;white-space:nowrap;
-overflow:hidden;text-overflow:ellipsis;'>{unit_label}</p>
+<p style='color:#8B949E;font-size:10px;font-weight:700;text-transform:uppercase;
+letter-spacing:0.1em;margin:0 0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>
+{icon} {display_name}
+<span style='font-weight:400;color:#484F58;font-size:9px;margin-left:4px;'>{n_initiatives} initiatives</span>
+</p>
+<p style='color:#E6EDF3;font-size:30px;font-weight:800;margin:0 0 0px;line-height:1.0;'>{avg_pct:.0f}%</p>
+<p style='color:#8B949E;font-size:9.5px;margin:0 0 4px;'>avg of goal</p>
+<p style='color:#8B949E;font-size:10px;margin:0 0 8px;white-space:nowrap;overflow:hidden;
+text-overflow:ellipsis;'>{context}</p>
 <div style='margin-top:auto;'>
-  <span style='display:inline-block;padding:2px 7px;border-radius:8px;
+  <span style='display:inline-block;padding:2px 6px;border-radius:7px;
   background:{badge_bg};color:{rating_color};border:1px solid {rating_color}55;
-  font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;
+  font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;
   white-space:nowrap;'>{rating_label}</span>
-  <p style='color:#484F58;font-size:10px;margin:4px 0 0;'>Updated: {freshness}</p>
+  <span style='color:#484F58;font-size:9px;margin-left:6px;'>Updated: {freshness}</span>
 </div>"""
 
 
@@ -155,10 +179,10 @@ def _domain_cards_row(df: pd.DataFrame) -> str:
             f"background:{tint_bg};"
             f"border:1px solid #30363D;"
             f"border-left:4px solid {rating_color};"
-            f"border-radius:12px;padding:16px 14px;height:160px;"
+            f"border-radius:12px;padding:14px 13px;height:180px;"
             f"box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden;"
         )
-        inner = _card_html(domain, df, rating_label, rating_color)
+        inner = _card_html(domain, df, avg_pct, rating_label, rating_color)
         cards_html += f"<div style='{card_style}'>{inner}</div>"
     return (
         f"<div style='display:flex;gap:12px;width:100%;margin-bottom:28px;'>"
@@ -242,3 +266,43 @@ def render() -> None:
             "Status": st.column_config.TextColumn("Status", width="small"),
         },
     )
+
+    # ── Data Sources expander ────────────────────────────────────────────────
+    _SOURCE_URL_MAP = {
+        "Statistics Canada Labour Force Survey":  "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1410038001",
+        "CMHC Rental Market Report":              "https://www.cmhc-schl.gc.ca/professionals/housing-markets-data-and-research/market-reports/rental-market-reports-major-centres",
+        "Grand River Transit Performance Report": "https://www.grt.ca/en/about-grt/performance-measures.aspx",
+        "Ontario Data Catalogue — Housing Supply":"https://data.ontario.ca/dataset/ontario-s-housing-supply-progress",
+        "Ontario.ca Long-Term Care":              "https://www.ontario.ca/locations/longtermcare/search/?n=Waterloo%2C+ON",
+        "Climate Action Waterloo Region":         "https://dashboard.climateactionwr.ca/",
+        "Statistics Canada Crime Severity Index": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3510019101",
+    }
+
+    latest_ts = display["Last Updated"].dropna()
+    as_of = str(latest_ts.max())[:16] if not latest_ts.empty else "unknown"
+
+    source_rows: list[tuple[str, str, str]] = []
+    if "source_name" in df.columns:
+        for _, row in df.iterrows():
+            sn = str(row.get("source_name") or "").strip()
+            domain_str = str(row.get("domain") or "").title()
+            ts_str = str(row.get("timestamp") or "")[:10]
+            if sn and sn not in {r[0] for r in source_rows}:
+                source_rows.append((sn, domain_str, ts_str))
+
+    if source_rows:
+        with st.expander(
+            f"📚 Data Sources — {len(source_rows)} sources, updated as of {as_of}",
+            expanded=False,
+        ):
+            st.markdown(
+                "This scorecard draws from the following data sources. "
+                "Fallback data is retrieved via [Tavily AI web search](https://tavily.com) "
+                "when primary sources are unavailable.",
+            )
+            rows_md = "| Source | Domain | Last Fetched | Link |\n|---|---|---|---|\n"
+            for sn, dom, ts in sorted(source_rows):
+                url = _SOURCE_URL_MAP.get(sn, "")
+                link = f"[↗]({url})" if url else "—"
+                rows_md += f"| {sn} | {dom} | {ts} | {link} |\n"
+            st.markdown(rows_md)

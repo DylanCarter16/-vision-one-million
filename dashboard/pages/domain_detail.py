@@ -113,21 +113,43 @@ def _overall_badge(avg_pct: float) -> str:
     )
 
 
+_SOURCE_URLS: dict[str, str] = {
+    "Statistics Canada Labour Force Survey":  "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1410038001",
+    "CMHC Rental Market Report":              "https://www.cmhc-schl.gc.ca/professionals/housing-markets-data-and-research/market-reports/rental-market-reports-major-centres",
+    "Grand River Transit Performance Report": "https://www.grt.ca/en/about-grt/performance-measures.aspx",
+    "Ontario Data Catalogue — Housing Supply":"https://data.ontario.ca/dataset/ontario-s-housing-supply-progress",
+    "Ontario.ca Long-Term Care":              "https://www.ontario.ca/locations/longtermcare/search/?n=Waterloo%2C+ON",
+    "Climate Action Waterloo Region":         "https://dashboard.climateactionwr.ca/",
+    "Statistics Canada Crime Severity Index": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3510019101",
+    "WRDSB Long-Term Accommodation Plan":     "https://www.wrdsb.ca/planning/wp-content/uploads/sites/5/2020-2030-WRDSB-Long-Term-Accommodation-Plan-FINAL.pdf",
+}
+
+
 def _source_caption(source_name: str, source_status: str) -> str:
-    """Return a human-readable source caption for a card."""
+    """Return an HTML source caption, with a clickable link when the URL is known."""
     s = (source_status or "").lower()
-    if source_name:
-        if s == "fallback":
-            return f"🔍 {source_name}"
-        if s == "failed":
-            return "❌ Data unavailable"
-        return f"✅ {source_name}"
-    # Fallback when no source_name stored (older seeded rows)
-    return {
-        "success":  "✅ Live source — direct fetch",
-        "fallback": "🔍 Tavily web search — primary source unavailable",
-        "failed":   "❌ Data unavailable",
-    }.get(s, "❌ Data unavailable")
+    if not source_name:
+        return {
+            "success":  "✅ Live source — direct fetch",
+            "fallback": "🔍 Tavily web search — primary source unavailable",
+            "failed":   "❌ Data unavailable",
+        }.get(s, "❌ Data unavailable")
+
+    if s == "failed":
+        return "❌ Data unavailable"
+
+    icon = "🔍" if s == "fallback" else "✅"
+    if source_name == "Tavily Web Search":
+        return "🔍 Tavily Web Search — aggregated from public sources"
+
+    url = _SOURCE_URLS.get(source_name, "")
+    if url:
+        return (
+            f"{icon} <a href='{url}' target='_blank' "
+            f"style='color:inherit;text-decoration:underline dotted;'>"
+            f"{source_name}</a>"
+        )
+    return f"{icon} {source_name}"
 
 
 def _subcategory_card(

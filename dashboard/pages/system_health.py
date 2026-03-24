@@ -132,11 +132,31 @@ def render() -> None:
         unsafe_allow_html=True,
     )
 
+    _SOURCE_URL_MAP = {
+        "Statistics Canada Labour Force Survey":  "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1410038001",
+        "CMHC Rental Market Report":              "https://www.cmhc-schl.gc.ca/professionals/housing-markets-data-and-research/market-reports/rental-market-reports-major-centres",
+        "Grand River Transit Performance Report": "https://www.grt.ca/en/about-grt/performance-measures.aspx",
+        "Ontario Data Catalogue — Housing Supply":"https://data.ontario.ca/dataset/ontario-s-housing-supply-progress",
+        "Ontario.ca Long-Term Care":              "https://www.ontario.ca/locations/longtermcare/search/?n=Waterloo%2C+ON",
+        "Climate Action Waterloo Region":         "https://dashboard.climateactionwr.ca/",
+        "Statistics Canada Crime Severity Index": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3510019101",
+        "WRDSB Long-Term Accommodation Plan":     "https://www.wrdsb.ca/planning/wp-content/uploads/sites/5/2020-2030-WRDSB-Long-Term-Accommodation-Plan-FINAL.pdf",
+    }
+
     display = health.copy()
     display["Status"] = display["source_status"].astype(str).str.lower()
     display["Last Updated"] = display["last_updated"].astype(str).str[:16].str.replace("T", " ")
     display = display.rename(columns={"label": "Metric", "domain": "Domain", "metric_id": "Metric ID"})
-    cols_show = ["Domain", "Metric", "Metric ID", "Last Updated", "Status"]
+
+    # Build Source URL column: URL if known, else empty string (LinkColumn needs a URL or blank)
+    if "source_name" in display.columns:
+        display["Source"] = display["source_name"].astype(str).str.strip()
+        display["Source URL"] = display["Source"].map(lambda sn: _SOURCE_URL_MAP.get(sn, ""))
+    else:
+        display["Source"] = ""
+        display["Source URL"] = ""
+
+    cols_show = ["Domain", "Metric", "Metric ID", "Last Updated", "Status", "Source", "Source URL"]
     cols_show = [c for c in cols_show if c in display.columns]
 
     st.dataframe(
@@ -149,5 +169,11 @@ def render() -> None:
             "Metric ID":   st.column_config.TextColumn("Metric ID"),
             "Last Updated": st.column_config.TextColumn("Last Updated"),
             "Status":      st.column_config.TextColumn("Status"),
+            "Source":      st.column_config.TextColumn("Source"),
+            "Source URL":  st.column_config.LinkColumn(
+                "Source URL",
+                display_text="↗ Open",
+                help="Link to the primary data source",
+            ),
         },
     )
